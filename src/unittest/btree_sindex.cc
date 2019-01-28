@@ -29,7 +29,7 @@ TPTEST(BTreeSindex, LowLevelOps) {
         txn_t txn(&cache_conn, write_durability_t::HARD, 1);
         {
             real_superblock_lock sb_lock(&txn, access_t::write, new_semaphore_in_line_t());
-            real_superblock_t superblock(std::move(sb_lock));
+            real_superblock_lock superblock(std::move(sb_lock));
             btree_slice_t::init_real_superblock(
                 &superblock, rockshard(io_backender.rocks(), table_id, 0), std::vector<char>(), binary_blob_t());
         }
@@ -43,13 +43,13 @@ TPTEST(BTreeSindex, LowLevelOps) {
     {
         scoped_ptr_t<txn_t> txn;
         {
-            scoped_ptr_t<real_superblock_t> superblock;
+            scoped_ptr_t<real_superblock_lock> superblock;
             get_btree_superblock_and_txn_for_writing(&cache_conn, nullptr,
                 write_access_t::write, 1,
                 write_durability_t::SOFT,
                 &superblock, &txn);
 
-            sindex_block_lock sindex_block(superblock->get(), access_t::write);
+            sindex_block_lock sindex_block(superblock.get(), access_t::write);
 
             initialize_secondary_indexes(rockshard(io_backender.rocks(), table_id, 0), &sindex_block);
         }
@@ -68,7 +68,7 @@ TPTEST(BTreeSindex, LowLevelOps) {
 
         scoped_ptr_t<txn_t> txn;
         {
-            scoped_ptr_t<real_superblock_t> superblock;
+            scoped_ptr_t<real_superblock_lock> superblock;
             get_btree_superblock_and_txn_for_writing(
                 &cache_conn,
                 nullptr,
@@ -78,7 +78,7 @@ TPTEST(BTreeSindex, LowLevelOps) {
                 &superblock,
                 &txn);
             sindex_block_lock sindex_block(
-                superblock->get(),
+                superblock.get(),
                 access_t::write);
 
             set_secondary_index(rocksh, &sindex_block, name, s);
@@ -89,7 +89,7 @@ TPTEST(BTreeSindex, LowLevelOps) {
     {
         scoped_ptr_t<txn_t> txn;
         {
-            scoped_ptr_t<real_superblock_t> superblock;
+            scoped_ptr_t<real_superblock_lock> superblock;
             get_btree_superblock_and_txn_for_writing(
                 &cache_conn,
                 nullptr,
@@ -99,7 +99,7 @@ TPTEST(BTreeSindex, LowLevelOps) {
                 &superblock,
                 &txn);
             sindex_block_lock sindex_block(
-                superblock->get(),
+                superblock.get(),
                 access_t::write);
 
             std::map<sindex_name_t, secondary_index_t> sindexes;
