@@ -29,9 +29,8 @@ TPTEST(BTreeSindex, LowLevelOps) {
         txn_t txn(&cache_conn, write_durability_t::HARD, 1);
         {
             real_superblock_lock sb_lock(&txn, access_t::write, new_semaphore_in_line_t());
-            real_superblock_lock superblock(std::move(sb_lock));
             btree_slice_t::init_real_superblock(
-                &superblock, rockshard(io_backender.rocks(), table_id, 0), std::vector<char>(), binary_blob_t());
+                &sb_lock, rockshard(io_backender.rocks(), table_id, 0), std::vector<char>(), binary_blob_t());
         }
         txn.commit();
     }
@@ -49,9 +48,9 @@ TPTEST(BTreeSindex, LowLevelOps) {
                 write_durability_t::SOFT,
                 &superblock, &txn);
 
-            sindex_block_lock sindex_block(superblock.get(), access_t::write);
+            superblock->sindex_block_write_signal()->wait();
 
-            initialize_secondary_indexes(rockshard(io_backender.rocks(), table_id, 0), &sindex_block);
+            initialize_secondary_indexes(rockshard(io_backender.rocks(), table_id, 0), superblock.get());
         }
         txn->commit();
     }
@@ -77,11 +76,10 @@ TPTEST(BTreeSindex, LowLevelOps) {
                 write_durability_t::SOFT,
                 &superblock,
                 &txn);
-            sindex_block_lock sindex_block(
-                superblock.get(),
-                access_t::write);
 
-            set_secondary_index(rocksh, &sindex_block, name, s);
+            superblock->sindex_block_write_signal()->wait();
+
+            set_secondary_index(rocksh, superblock.get(), name, s);
         }
         txn->commit();
     }
@@ -98,12 +96,11 @@ TPTEST(BTreeSindex, LowLevelOps) {
                 write_durability_t::SOFT,
                 &superblock,
                 &txn);
-            sindex_block_lock sindex_block(
-                superblock.get(),
-                access_t::write);
+
+            superblock->sindex_block_write_signal()->wait();
 
             std::map<sindex_name_t, secondary_index_t> sindexes;
-            get_secondary_indexes(rocksh, &sindex_block, &sindexes);
+            get_secondary_indexes(rocksh, superblock.get(), &sindexes);
 
             auto it = sindexes.begin();
             auto jt = mirror.begin();
