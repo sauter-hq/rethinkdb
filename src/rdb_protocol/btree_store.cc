@@ -200,7 +200,7 @@ void store_t::read(
                                 interruptor);
     DEBUG_ONLY_CODE(metainfo->visit(
         superblock.get(), metainfo_checker.region, metainfo_checker.callback));
-    protocol_read(_read, response, superblock.get(), interruptor);
+    protocol_read(_read, response, std::move(superblock), interruptor);
 }
 
 void store_t::write(
@@ -905,7 +905,6 @@ MUST_USE bool store_t::mark_secondary_index_deleted(
     return true;
 }
 
-// TODO: Make this and the write version take superblock by value.
 MUST_USE bool store_t::acquire_sindex_superblock_for_read(
         const sindex_name_t &name,
         const std::string &table_name,
@@ -924,7 +923,6 @@ MUST_USE bool store_t::acquire_sindex_superblock_for_read(
     /* Figure out what the superblock for this index is. */
     secondary_index_t sindex;
     if (!::get_secondary_index(rocksh(), superblock, name, &sindex)) {
-        superblock->reset_superblock();
         return false;
     }
 
@@ -932,12 +930,10 @@ MUST_USE bool store_t::acquire_sindex_superblock_for_read(
     *sindex_uuid_out = sindex.id;
 
     if (!sindex.is_ready()) {
-        superblock->reset_superblock();
         throw sindex_not_ready_exc_t(name.name, sindex, table_name);
     }
 
     sindex_superblock_lock superblock_lock(superblock, sindex.id, access_t::read);
-    superblock->reset_superblock();
     sindex_sb_out->init(new sindex_superblock_lock(std::move(superblock_lock)));
     return true;
 }
@@ -945,7 +941,7 @@ MUST_USE bool store_t::acquire_sindex_superblock_for_read(
 MUST_USE bool store_t::acquire_sindex_superblock_for_write(
         const sindex_name_t &name,
         const std::string &table_name,
-        real_superblock_lock *superblock,
+        scoped_ptr_t<real_superblock_lock> superblock,
         scoped_ptr_t<sindex_superblock_lock> *sindex_sb_out,
         uuid_u *sindex_uuid_out)
     THROWS_ONLY(sindex_not_ready_exc_t) {
@@ -957,23 +953,21 @@ MUST_USE bool store_t::acquire_sindex_superblock_for_write(
 
     /* Figure out what the superblock for this index is. */
     secondary_index_t sindex;
-    if (!::get_secondary_index(rocksh(), superblock, name, &sindex)) {
-        superblock->reset_superblock();
+    if (!::get_secondary_index(rocksh(), superblock.get(), name, &sindex)) {
         return false;
     }
     *sindex_uuid_out = sindex.id;
 
     if (!sindex.is_ready()) {
-        superblock->reset_superblock();
         throw sindex_not_ready_exc_t(name.name, sindex, table_name);
     }
 
 
     sindex_superblock_lock superblock_lock(
-        superblock,
+        superblock.get(),
         sindex.id,
         access_t::write);
-    superblock->reset_superblock();
+    superblock.reset();
     sindex_sb_out->init(new sindex_superblock_lock(std::move(superblock_lock)));
     return true;
 }
