@@ -71,6 +71,12 @@ class NavBarView extends Backbone.View
                 when 'dataexplorer'
                     @$('ul.nav-left li').removeClass('active')
                     @$('li#nav-dataexplorer').addClass('active')
+                when 'dataexplorer_table'
+                    @$('ul.nav-left li').removeClass('active')
+                    @$('li#nav-dataexplorer').addClass('active')
+                when 'dataexplorer_table_id'
+                    @$('ul.nav-left li').removeClass('active')
+                    @$('li#nav-dataexplorer').addClass('active')
                 when 'logs'
                     @$('ul.nav-left li').removeClass('active')
                     @$('li#nav-logs').addClass('active')

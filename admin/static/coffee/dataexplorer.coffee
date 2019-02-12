@@ -2838,6 +2838,13 @@ class Container extends Backbone.View
         @codemirror.setValue ''
         @codemirror.focus()
 
+    # Set the input
+    load_query_text: (text) =>
+        @codemirror.setValue text
+        @state.current_query = text
+        @save_current_query()
+
+
     # Called if there is any on the connection
     error_on_connect: (error) =>
         if /^(Unexpected token)/.test(error.message)
@@ -3902,9 +3909,7 @@ class HistoryView extends Backbone.View
     load_query: (event) =>
         id = @$(event.target).data().id
         # Set + save codemirror
-        @container.codemirror.setValue @history[parseInt(id)].query
-        @container.state.current_query = @history[parseInt(id)].query
-        @container.save_current_query()
+        @container.load_query_text(@history[parseInt(id)].query)
 
     delete_query: (event) =>
         that = @

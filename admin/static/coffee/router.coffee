@@ -27,6 +27,8 @@ class BackboneCluster extends Backbone.Router
         'logs/': 'logs'
         'dataexplorer': 'dataexplorer'
         'dataexplorer/': 'dataexplorer'
+        'dataexplorer/:db/:table': 'dataexplorer_table'
+        'dataexplorer/:db/table/': 'dataexplorer_table'
 
     initialize: (data) ->
         super
@@ -68,6 +70,18 @@ class BackboneCluster extends Backbone.Router
         @container.html @current_view.render().$el
         @current_view.init_after_dom_rendered() # Need to be called once the view is in the DOM tree
         @current_view.results_view_wrapper.set_scrollbar() # In case we check the data explorer, leave and come back
+
+    dataexplorer_table: (db, table) ->
+        @navigate("#dataexplorer", {replace: true})
+        @dataexplorer()
+        @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\')')
+        @current_view.execute_query()
+
+    goto_dataexplorer_table_id: (db, table, document_id) ->
+        @navigate("#dataexplorer", {replace: false})
+        @dataexplorer()
+        @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\').get(' + document_id + ')')
+        @current_view.execute_query()
 
     table: (id) ->
         @current_view.remove()
