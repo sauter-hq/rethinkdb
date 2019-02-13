@@ -337,6 +337,8 @@ class TableMainView extends Backbone.View
         'click .close': 'close_alert'
         'click .operations .rename': 'rename_table'
         'click .operations .delete': 'delete_table'
+        'click .explore-table': 'explore_table'
+        'submit .table-lookup-by-id': 'explore_table_document'
 
 
     initialize: (data, options) =>
@@ -442,6 +444,13 @@ class TableMainView extends Backbone.View
             database: @model.get 'db'
         }]
 
+    explore_table: (event) ->
+        app.main.router.goto_dataexplorer_table(@model.get('db'), @model.get('name'))
+
+    explore_table_document: (event) ->
+        # TODO: Duplicated code?  Make a view?
+        id = @$('.table-lookup-box').attr('value')
+        app.main.router.goto_dataexplorer_table_id(@model.get('db'), @model.get('name'), id)
 
     remove: =>
         @title.remove()

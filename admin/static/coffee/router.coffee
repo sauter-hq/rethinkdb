@@ -77,6 +77,12 @@ class BackboneCluster extends Backbone.Router
         @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\')')
         @current_view.execute_query()
 
+    goto_dataexplorer_table: (db, table) ->
+        @navigate("#dataexplorer", {replace: false})
+        @dataexplorer()
+        @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\')')
+        @current_view.execute_query()
+
     goto_dataexplorer_table_id: (db, table, document_id) ->
         @navigate("#dataexplorer", {replace: false})
         @dataexplorer()
