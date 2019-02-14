@@ -1,8 +1,13 @@
 RethinkDB Database System
 
-Copyright 2010-present, The Linux Foundation, portions copyright Google and 
+Copyright 2010-present, The Linux Foundation, portions copyright Google and
 others and used with permission or subject to their respective license
 agreements.
+
+Some parts, administrative UI work added in the series of Git commits that come after
+bd461da9f0013d1865f1ef4758073b90cfadac02, are Copyright 2019 Samuel Hughes.  All
+rights are reserved.  (These modifications are _not_ licensed under the Apache
+License, 2.0.)
 
 The software is released under the terms of the Apache License, version 2.0.
 
