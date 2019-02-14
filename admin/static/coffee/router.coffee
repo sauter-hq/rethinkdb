@@ -77,13 +77,16 @@ class BackboneCluster extends Backbone.Router
         @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\')')
         @current_view.execute_query()
 
+    # TODO: Maybe these functions don't belong in the router.
     goto_dataexplorer_table: (db, table) ->
+        @update_active_tab('dataexplorer')
         @navigate("#dataexplorer", {replace: false})
         @dataexplorer()
         @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\')')
         @current_view.execute_query()
 
     goto_dataexplorer_table_id: (db, table, document_id) ->
+        @update_active_tab('dataexplorer')
         @navigate("#dataexplorer", {replace: false})
         @dataexplorer()
         @current_view.load_query_text('r.db(\'' + db + '\').table(\'' + table + '\').get(' + document_id + ')')
