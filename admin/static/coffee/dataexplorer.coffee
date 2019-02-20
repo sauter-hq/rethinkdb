@@ -3084,13 +3084,18 @@ class TableViewerView extends ResultView
 
     # TODO: Any case where we call TableViewer cleanup logic?
     initialize: (args) =>
-        @row_source = new StaticRowSource()
+        @row_source = new QueryRowSource(args.query_result.results)
         @table_viewer = new TableViewer(@el, @row_source);
         super args
 
     render: =>
         @table_viewer.redraw()
         @
+
+    add_row: (row, noflash) =>
+        # TODO: Use noflash.
+        @row_source.addRow(row)
+        @table_viewer.appendedSource();
 
 
 

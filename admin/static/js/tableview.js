@@ -13,18 +13,30 @@
 
 
 
+// TODO: Reach into QueryRowSource and request more batches.
+class QueryRowSource {
+    constructor(rows) {
+        this.rows = [];
+        if (rows) {
+            // For linear query results, we don't have keys -- objects are displayed in the order
+            // that they are returned by the query.
+            let i = 0;
+            for (let row of rows) {
+                this.rows.push({key: i, row: row});
+                i++;
+            }
+        }
+    }
 
-// For testing purposes...?
-class StaticRowSource {
-    constructor(jsonRows) {
-        this.jsonRows = jsonRows;
+    addRow(row) {
+        this.rows.push({key: this.rows.length, row: row});
     }
 
     // -> Promise<[object]>
     getRowsBefore(key) {
         let ret = [];
-        for (let i = Math.max(0, key - 10); i + 0.5 < key; i++) {
-            ret.push({id: i});
+        for (let i = Math.max(0, key - 10); i < key; i++) {
+            ret.push(this.rows[i]);
         }
         return Promise.resolve(ret);
     }
@@ -32,16 +44,17 @@ class StaticRowSource {
     // -> Promise<[object]>
     getRowsAfter(key) {
         let ret = [];
-        for (let i = key + 1; i + 0.5 < key + 11; i++) {
-            ret.push({id: i});
+        for (let i = key + 1, e = Math.min(this.rows.length, key + 11); i < e; i++) {
+            ret.push(this.rows[i]);
         }
         return Promise.resolve(ret);
     }
 
+    // -> Promise<[object]>
     getRowsFromStart() {
         let ret = [];
-        for (let i = 0; i < 10; i++) {
-            ret.push({id: i});
+        for (let i = 0, e = Math.min(10, this.rows.length); i < e; i++) {
+            ret.push(this.rows[i]);
         }
         return Promise.resolve(ret);
     }
@@ -90,7 +103,7 @@ class TableViewer {
 
         if (this.rowHolder.children.length == 0) {
             if (!this.underflow) {
-                this.rowSource.getRowsFromStart().then((rows) => this.supplyRows(rows));
+                this.rowSource.getRowsFromStart().then((rows) => this._supplyRows(rows));
             }
             return;
         }
@@ -102,19 +115,25 @@ class TableViewer {
         let loadSubsequent =
             innerBoundingRect.bottom < outerBoundingRect.bottom && !this.underflow;
 
+        // TODO: pass key in here.
         if (loadPreceding) {
-            let rowsBefore = rowSource.getRowsBefore().then((rows) => this.supplyRows(rows));
+            let rowsBefore = rowSource.getRowsBefore().then((rows) => this._supplyRows(rows));
         }
         if (loadSubsequent) {
-            let rowsAfter = rowSource.getRowsAfter().then((rows) => this.supplyRows(rows));
+            let rowsAfter = rowSource.getRowsAfter().then((rows) => this._supplyRows(rows));
         }
+    }
+
+    appendedSource() {
+        this.underflow = false;
+        this.redraw();
     }
 
     cleanup() {
         this.rowSource.cancelPendingRequests();
     }
 
-    supplyRows(rows) {
+    _supplyRows(rows) {
         console.log("Supplying rows", rows);
         for (let row of rows) {
             this.rowHolder.appendChild(TableViewer.makeDOMRow(row));
