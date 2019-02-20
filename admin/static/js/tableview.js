@@ -89,10 +89,10 @@ class TableViewer {
 
         this.columnHeaders = null;
         this.rowScroller = document.createElement('div');
-        this.rowScroller.className = 'TableViewerRowScroller';
+        this.rowScroller.className = 'table_viewer_scroller';
         el.appendChild(this.rowScroller);
         this.rowHolder = document.createElement('div');
-        this.rowHolder.className = 'TableViewerRowHolder';
+        this.rowHolder.className = 'table_viewer_holder';
         this.rowScroller.appendChild(this.rowHolder);
 
 
@@ -110,6 +110,7 @@ class TableViewer {
         }
     }
 
+    // TODO: Rename to "update" -- this doesn't redraw everything.
     redraw() {
         console.log("TableViewer redraw");
         // Our job is to look at what has been rendered, what needs to be
