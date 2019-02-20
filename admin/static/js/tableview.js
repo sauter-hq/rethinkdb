@@ -17,6 +17,8 @@
 class QueryRowSource {
     constructor(rows) {
         this.rows = [];
+        // TODO: Actually make use of this...
+        this.pendingAfter = null;
         if (rows) {
             // For linear query results, we don't have keys -- objects are displayed in the order
             // that they are returned by the query.
@@ -33,33 +35,25 @@ class QueryRowSource {
     }
 
     // -> Promise<[object]>
-    getRowsBefore(key) {
-        console.log("getRowsBefore");
+    getRowsFrom(startKey) {
+        console.log("getRowsFrom");
+        if (this.pendingAfter != null) {
+            console.log("getRowsFrom(", startKey, ") after ", this.pendingAfter);
+            return;
+        }
         let ret = [];
-        for (let i = Math.max(0, key - 10); i < key; i++) {
+        let e = Math.min(this.rows.length, startKey + 10)
+        for (let i = startKey; i < e; i++) {
             ret.push(this.rows[i]);
         }
-        return Promise.resolve(ret);
-    }
-
-    // -> Promise<[object]>
-    getRowsAfter(key) {
-        console.log("getRowsAfter");
-        let ret = [];
-        for (let i = key + 1, e = Math.min(this.rows.length, key + 11); i < e; i++) {
-            ret.push(this.rows[i]);
-        }
-        return Promise.resolve(ret);
+        // TODO: Support loading more data.
+        let isEnd = e == this.rows.length;
+        return Promise.resolve({rows: ret, isEnd: isEnd});
     }
 
     // -> Promise<[object]>
     getRowsFromStart() {
-        console.log("getRowsFromStart");
-        let ret = [];
-        for (let i = 0, e = Math.min(10, this.rows.length); i < e; i++) {
-            ret.push(this.rows[i]);
-        }
-        return Promise.resolve(ret);
+        return this.getRowsFrom(0);
     }
 
     cancelPendingRequests() {
@@ -73,11 +67,7 @@ class TableViewer {
     constructor(el, rowSource) {
         this.el = el;
         this.rowSource = rowSource;
-        // Set to true when the data returned a short result and did not
-        // completely fill up the table view. E.g. the table has enough space
-        // for 50 rows, but the table only has 49 rows after our scroll point.
-        // This means, if we look at the elements and see extra space, we do not
-        // need to re-render.
+        // Set to true when the end of the data is reached and present in the DOM.
         this.underflow = false;
 
         this.queryGeneration = 0;
@@ -110,7 +100,7 @@ class TableViewer {
         }
     }
 
-    // TODO: Rename to "update" -- this doesn't redraw everything.
+    // TODO: Rename to "update" -- this doesn't redraw per se.
     redraw() {
         console.log("TableViewer redraw");
         // Our job is to look at what has been rendered, what needs to be
@@ -119,7 +109,7 @@ class TableViewer {
         if (this.rowHolder.children.length == 0) {
             if (!this.underflow) {
                 let generation = ++this.queryGeneration;
-                this.rowSource.getRowsFromStart().then((rows) => this._supplyRows(generation, rows));
+                this.rowSource.getRowsFromStart().then((res) => this._supplyRows(generation, res));
             }
             return;
         }
@@ -127,24 +117,27 @@ class TableViewer {
         let scrollTop = this.rowScroller.scrollTop;
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = innerBoundingRect.top > outerBoundingRect.top;
+        let loadPreceding = rowsBoundingRect.top > scrollerBoundingRect.top;
         let loadSubsequent =
-            innerBoundingRect.bottom < outerBoundingRect.bottom && !this.underflow;
+            rowsBoundingRect.bottom < scrollerBoundingRect.bottom && !this.underflow;
 
         console.log("TODO: pass key into getRowsBefore, After");
-        // TODO: pass key in here.
-        let generation = ++this.queryGeneration;
+        // TODO: Well, we don't really use generation, do we.
+        let generation = this.queryGeneration;
         if (loadPreceding) {
-            let rowsBefore = rowSource.getRowsBefore().then((rows) => this._supplyRowsBefore(generation, rows));
+            console.log("loadPreceding not supported yet");
+            // let rowsBefore = rowSource.getRowsBefore(TODO).then((rows) => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
-            let rowsAfter = rowSource.getRowsAfter().then((rows) => this._supplyRows(generation, rows));
+            // TODO: Grotesque rowHolder.children.length
+            let rowsAfter = this.rowSource.getRowsFrom(this.rowHolder.children.length).then(
+                (res) => this._supplyRows(generation, res));
         }
     }
 
     appendedSource() {
         this.underflow = false;
-        this.redraw();
+        // this.redraw();
     }
 
     cleanup() {
@@ -155,7 +148,8 @@ class TableViewer {
         console.log("TODO: supplyRowsBefore not implemented");
     }
 
-    _supplyRows(generation, rows) {
+    _supplyRows(generation, res) {
+        let {rows, isEnd} = res;
         if (generation < this.renderedGeneration) {
             console.log("Ancient request from previous generation ignored");
             return;
@@ -164,17 +158,22 @@ class TableViewer {
         if (generation > this.renderedGeneration) {
             this.wipe();
         }
+        this.renderedGeneration = generation;
         // TODO: We falsely assume append-only.
         for (let row of rows) {
             this.rowHolder.appendChild(TableViewer.makeDOMRow(row));
         }
+        this.underflow = isEnd;
+        console.log("this.underflow = ", this.underflow);
+        // We might need to load more rows.
+        setInterval(() => this.redraw());
     }
     
     static makeDOMRow(row) {
-        let pre = document.createElement("pre");
-        pre.appendChild(document.createTextNode(JSON.stringify(row)));
-        console.log("Made dom row", pre);
-        return pre;
+        let rowEl = document.createElement("p");
+        rowEl.appendChild(document.createTextNode(JSON.stringify(row)));
+        rowEl.className = "table_viewer_row";
+        return rowEl;
     }
 
 }
