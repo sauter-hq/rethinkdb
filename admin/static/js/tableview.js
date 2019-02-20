@@ -34,6 +34,7 @@ class QueryRowSource {
 
     // -> Promise<[object]>
     getRowsBefore(key) {
+        console.log("getRowsBefore");
         let ret = [];
         for (let i = Math.max(0, key - 10); i < key; i++) {
             ret.push(this.rows[i]);
@@ -43,6 +44,7 @@ class QueryRowSource {
 
     // -> Promise<[object]>
     getRowsAfter(key) {
+        console.log("getRowsAfter");
         let ret = [];
         for (let i = key + 1, e = Math.min(this.rows.length, key + 11); i < e; i++) {
             ret.push(this.rows[i]);
@@ -52,6 +54,7 @@ class QueryRowSource {
 
     // -> Promise<[object]>
     getRowsFromStart() {
+        console.log("getRowsFromStart");
         let ret = [];
         for (let i = 0, e = Math.min(10, this.rows.length); i < e; i++) {
             ret.push(this.rows[i]);
@@ -77,6 +80,9 @@ class TableViewer {
         // need to re-render.
         this.underflow = false;
 
+        this.queryGeneration = 0;
+        this.renderedGeneration = 0;
+
         while (el.firstChild) {
             el.removeChild(el.firstChild);
         }
@@ -89,6 +95,7 @@ class TableViewer {
         this.rowHolder.className = 'TableViewerRowHolder';
         this.rowScroller.appendChild(this.rowHolder);
 
+
         // General structure:
         // <div "el">
         //   <div "columnHeaders"></div>
@@ -97,13 +104,21 @@ class TableViewer {
         // But columnHeaders is absent right now.  (And no rows have been loaded either.)
     }
 
+    wipe() {
+        while (this.rowHolder.firstChild) {
+            this.rowHolder.removeChild(this.rowHolder.firstChild);
+        }
+    }
+
     redraw() {
+        console.log("TableViewer redraw");
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
 
         if (this.rowHolder.children.length == 0) {
             if (!this.underflow) {
-                this.rowSource.getRowsFromStart().then((rows) => this._supplyRows(rows));
+                let generation = ++this.queryGeneration;
+                this.rowSource.getRowsFromStart().then((rows) => this._supplyRows(generation, rows));
             }
             return;
         }
@@ -115,12 +130,14 @@ class TableViewer {
         let loadSubsequent =
             innerBoundingRect.bottom < outerBoundingRect.bottom && !this.underflow;
 
+        console.log("TODO: pass key into getRowsBefore, After");
         // TODO: pass key in here.
+        let generation = ++this.queryGeneration;
         if (loadPreceding) {
-            let rowsBefore = rowSource.getRowsBefore().then((rows) => this._supplyRows(rows));
+            let rowsBefore = rowSource.getRowsBefore().then((rows) => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
-            let rowsAfter = rowSource.getRowsAfter().then((rows) => this._supplyRows(rows));
+            let rowsAfter = rowSource.getRowsAfter().then((rows) => this._supplyRows(generation, rows));
         }
     }
 
@@ -133,8 +150,20 @@ class TableViewer {
         this.rowSource.cancelPendingRequests();
     }
 
-    _supplyRows(rows) {
+    _supplyRowsBefore(generation, rows) {
+        console.log("TODO: supplyRowsBefore not implemented");
+    }
+
+    _supplyRows(generation, rows) {
+        if (generation < this.renderedGeneration) {
+            console.log("Ancient request from previous generation ignored");
+            return;
+        }
         console.log("Supplying rows", rows);
+        if (generation > this.renderedGeneration) {
+            this.wipe();
+        }
+        // TODO: We falsely assume append-only.
         for (let row of rows) {
             this.rowHolder.appendChild(TableViewer.makeDOMRow(row));
         }
