@@ -85,6 +85,7 @@ class TableViewer {
         this.rowHolder.className = 'table_viewer_holder';
         this.rowScroller.appendChild(this.rowHolder);
 
+        this.rowScroller.onscroll = event => this.redraw();
 
         // General structure:
         // <div "el">
@@ -166,9 +167,10 @@ class TableViewer {
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
-        setInterval(() => this.redraw());
+        // TODO: Remove 1000.
+        setInterval(() => this.redraw(), 1000);
     }
-    
+
     static makeDOMRow(row) {
         let rowEl = document.createElement("p");
         rowEl.appendChild(document.createTextNode(JSON.stringify(row)));
