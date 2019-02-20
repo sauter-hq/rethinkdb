@@ -2915,7 +2915,6 @@ class Container extends Backbone.View
         # We do not destroy the cursor, because the user might come back and use it.
         super()
 
-
 # An abstract base class
 class ResultView extends Backbone.View
     tree_large_container_template: require('../handlebars/dataexplorer_large_result_json_tree_container.hbs')
@@ -3080,6 +3079,21 @@ class ResultView extends Backbone.View
         @render()
 
 
+class TableViewerView extends ResultView
+    className: 'results table_viewer_container'
+
+    # TODO: Any case where we call TableViewer cleanup logic?
+    initialize: (args) =>
+        @row_source = new StaticRowSource()
+        @table_viewer = new TableViewer(@el, @row_source);
+        super args
+
+    render: =>
+        @table_viewer.redraw()
+        @
+
+
+
 class TreeView extends ResultView
     className: 'results tree_view_container'
     templates:
@@ -3110,6 +3124,7 @@ class TreeView extends ResultView
         children = tree_container.children()
         if children.length > @parent.container.state.options.query_limit
             children.last().remove()
+
 
 
 class TableView extends ResultView
@@ -3561,6 +3576,7 @@ class ResultViewWrapper extends Backbone.View
     views:
         tree: TreeView
         table: TableView
+        tableviewer: TableViewerView
         profile: ProfileView
         raw: RawView
 
@@ -3568,6 +3584,8 @@ class ResultViewWrapper extends Backbone.View
         'click .link_to_profile_view': 'show_profile'
         'click .link_to_tree_view': 'show_tree'
         'click .link_to_table_view': 'show_table'
+        'click .link_to_tableviewer_view': 'show_tableviewer'
+
         'click .link_to_raw_view': 'show_raw'
         'click .activate_profiler': 'activate_profiler'
         'click .more_results_link': 'show_next_batch'
@@ -3626,6 +3644,9 @@ class ResultViewWrapper extends Backbone.View
     show_table: (event) =>
         event.preventDefault()
         @set_view 'table'
+    show_tableviewer: (event) =>
+        event.preventDefault()
+        @set_view 'tableviewer'
     show_raw: (event) =>
         event.preventDefault()
         @set_view 'raw'
@@ -4037,6 +4058,7 @@ exports.QueryResult = QueryResult
 exports.Container = Container
 exports.ResultView = ResultView
 exports.TreeView = TreeView
+exports.TableViewerView = TableViewerView
 exports.TableView = TableView
 exports.RawView = RawView
 exports.ProfileView = ProfileView
