@@ -13,12 +13,13 @@
 
 
 
-// TODO: Reach into QueryRowSource and request more batches.
+// TODO: Reach into QueryResult and request more batches.
 class QueryRowSource {
     constructor(rows) {
         this.rows = [];
-        // TODO: Actually make use of this...
+        // TODO: Actually make use of these...
         this.pendingAfter = null;
+        this.pendingBefore = null;
         if (rows) {
             // For linear query results, we don't have keys -- objects are displayed in the order
             // that they are returned by the query.
@@ -34,27 +35,43 @@ class QueryRowSource {
         this.rows.push({key: this.rows.length, row: row});
     }
 
-    // -> Promise<[object]>
+    // Returns the set of rows in [startKey, some_end_key]
     getRowsFrom(startKey) {
-        console.log("getRowsFrom");
+        console.log("getRowsFrom", startKey);
         if (this.pendingAfter != null) {
             console.log("getRowsFrom(", startKey, ") after ", this.pendingAfter);
             return;
         }
         let ret = [];
-        let e = Math.min(this.rows.length, startKey + 10)
+        let e = Math.min(this.rows.length, startKey + 10);
         for (let i = startKey; i < e; i++) {
             ret.push(this.rows[i]);
         }
-        // TODO: Support loading more data.
-        let isEnd = e == this.rows.length;
-        return Promise.resolve({rows: ret, isEnd: isEnd});
+        // TODO: Support loading more data... or don't depend on QueryResult.
+        let lastRow = e == this.rows.length;
+        return Promise.resolve({rows: ret, isEnd: lastRow});
     }
 
-    // -> Promise<[object]>
     getRowsFromStart() {
         return this.getRowsFrom(0);
     }
+
+    // Returns the set of rows in [some_start_key, endKey).
+    getRowsBefore(endKey) {
+        console.log("getRowsBefore", endKey);
+        if (this.pendingBefore != null) {
+            console.log("getRowsBefore(", endKey, ") before ", this.pendingBefore);
+            return;
+        }
+
+        let ret = [];
+        let startKey = Math.max(0, endKey - 10);
+        for (let i = startKey; i < endKey; i++) {
+            ret.push(this.rows[i]);
+        }
+        return Promise.resolve(ret);
+    }
+
 
     cancelPendingRequests() {
         // Nothing to do yet.
@@ -69,9 +86,11 @@ class TableViewer {
         this.rowSource = rowSource;
         // Set to true when the end of the data is reached and present in the DOM.
         this.underflow = false;
+        this.frontOffset = 0;
 
         this.queryGeneration = 0;
         this.renderedGeneration = 0;
+        this.numRedraws = 0;
 
         while (el.firstChild) {
             el.removeChild(el.firstChild);
@@ -103,12 +122,13 @@ class TableViewer {
 
     // TODO: Rename to "update" -- this doesn't redraw per se.
     redraw() {
-        console.log("TableViewer redraw");
+        console.log("TableViewer redraw", ++this.numRedraws);
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
 
         if (this.rowHolder.children.length == 0) {
             if (!this.underflow) {
+                console.log("rows from start");
                 let generation = ++this.queryGeneration;
                 this.rowSource.getRowsFromStart().then((res) => this._supplyRows(generation, res));
             }
@@ -122,17 +142,18 @@ class TableViewer {
         let loadSubsequent =
             rowsBoundingRect.bottom < scrollerBoundingRect.bottom && !this.underflow;
 
-        console.log("TODO: pass key into getRowsBefore, After");
         // TODO: Well, we don't really use generation, do we.
         let generation = this.queryGeneration;
         if (loadPreceding) {
-            console.log("loadPreceding not supported yet");
-            // let rowsBefore = rowSource.getRowsBefore(TODO).then((rows) => this._supplyRowsBefore(generation, rows));
+            console.log("loadPreceding");
+            let rowsBefore = this.rowSource.getRowsBefore(this.frontOffset).then(
+                rows => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
+            console.log("loadSubsequent");
             // TODO: Grotesque rowHolder.children.length
-            let rowsAfter = this.rowSource.getRowsFrom(this.rowHolder.children.length).then(
-                (res) => this._supplyRows(generation, res));
+            let rowsAfter = this.rowSource.getRowsFrom(this.rowHolder.children.length - this.frontOffset).then(
+                res => this._supplyRows(generation, res));
         }
     }
 
@@ -146,7 +167,23 @@ class TableViewer {
     }
 
     _supplyRowsBefore(generation, rows) {
-        console.log("TODO: supplyRowsBefore not implemented");
+        if (generation < this.renderedGeneration) {
+            console.log("Ancient request from previous generation ignored");
+            return;
+        }
+        console.log("Supplying rows before", rows);
+        if (generation > this.renderedGeneration) {
+            // TODO: Think this generation stuff through.
+            this.wipe();
+        }
+        this.renderedGeneration = generation;
+        let frontNode = this.rowHolder.firstChild;  // possibly null.
+        for (let row of rows) {
+            this.rowHolder.insertBefore(TableViewer.makeDOMRow(row), frontNode);
+        }
+        // We might need to load more rows.
+        // TODO: Remove 1000.
+        setTimeout(() => this.redraw(), 1000);
     }
 
     _supplyRows(generation, res) {
@@ -168,7 +205,7 @@ class TableViewer {
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
         // TODO: Remove 1000.
-        setInterval(() => this.redraw(), 1000);
+        setTimeout(() => this.redraw(), 1000);
     }
 
     static makeDOMRow(row) {
