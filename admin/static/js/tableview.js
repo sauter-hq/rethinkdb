@@ -11,8 +11,126 @@
 // responsibility is to load data, and apply sortings.
 
 
+class TableRowSource {
+    constructor(r, driver, tableId) {
+        this.r  = r;
+        this.driver = driver;
+        this.tableId = tableId;
 
+        this.cachedRows = [];
+        this.cachedRowsIsEnd = false;
+        this.cachedRowsOffset = 0;
 
+        // TODO: In getRowsFrom, we need to actually ensure the rows are
+        // processed in the same order the promises get pulsed.  It's fragile
+        // logic.  Does JS have in-order channels?
+
+        this.rightCompletionCbs = [];
+    }
+
+    // Takes a ((reql_table, table_config) -> reql_query) function and returns a reql query.
+    query(queryFunc) {
+        let r = this.r;
+        // TODO: Why is system_db used elsewhere?
+        return r.db('rethinkdb').table('table_config').get(this.tableId).do(table_config =>
+            queryFunc(r.db(table_config('db')).table(table_config('name')), table_config)
+        );
+    }
+
+    getRowsFrom(startIndex) {
+        console.log("getRowsFrom", startIndex);
+        let r = this.r;
+        let query_limit = 30;  // TODO: no
+        let endOffset = this.cachedRowsOffset + this.cachedRows.length;
+        if (startIndex < endOffset) {
+            let ix = startIndex - this.cachedRowsOffset;
+            // TODO: Don't return _all_ the rows, just... 30.
+            return Promise.resolve(
+                {rows: this.cachedRows.slice(ix, Math.min(this.cachedRows.length, ix + query_limit)), isEnd: this.cachedRowsIsEnd}
+            );
+        }
+        if (startIndex > endOffset) {
+            return Promise.reject("getRowsFrom past the end");
+        }
+
+        // TODO: Look at all code for == and !=.
+        let needsQuery = this.rightCompletionCbs.length === 0;
+
+        let ret = new Promise((resolve, reject) => {
+            this.rightCompletionCbs.push({resolve, reject});
+        });
+
+        if (needsQuery) {
+            let primary_key = 'id';  // TODO: Don't hardcode this.
+            let rightKey = this.cachedRows.length === 0 ? r.minval :
+                this.cachedRows[this.cachedRows.length - 1][primary_key];
+
+            let q = this.query((table, table_config) => 
+                table.between(rightKey, r.maxval, {leftBound: 'open'})
+                    .orderBy(primary_key).limit(query_limit));
+
+            this.driver.run_once(q, (err, result) => {
+                if (err) {
+                    console.log("run_once err:", err);
+                    let cbs = this.rightCompletionCbs;
+                    this.rightCompletionCbs = [];
+                    for (let cb of cbs) {
+                        cb.reject(err);
+                    }
+                } else {
+                    result.toArray((err, results) => {
+                        console.log("result toArray err:", err, "results:", results);
+                        let cbs = this.rightCompletionCbs;
+                        this.rightCompletionCbs = [];
+                        if (err) {
+                            for (let cb of cbs) {
+                                cb.reject(err);
+                            }
+                        } else {
+                            for (let result of results) {
+                                this.cachedRows.push(result);
+                            }
+                            let isEnd = results.length < query_limit;
+                            this.cachedRows.isEnd = isEnd;
+                            for (let cb of cbs) {
+                                console.log("calling cb with results", results);
+                                cb.resolve({rows: results, isEnd: isEnd});
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        return ret;
+    }
+
+    getRowsFromStart() {
+        return this.getRowsFrom(0);
+    }
+
+    getRowsBefore(endIndex) {
+        console.log("getRowsBefore", endIndex);
+        if (this.cachedRowsOffset > 0) {
+            return Promise.reject("getRowsBefore not implemented for deletion of rows yet");
+        }
+
+        if (this.cachedRows.length < endIndex) {
+            // TODO: Ensure this case is still impossible in the future.
+            return Promise.reject("getRowsBefore called with too-big endIndex");
+        }
+
+        let query_limit = 30;  // TODO: no
+        let value = this.cachedRows.slice(Math.max(endIndex - query_limit, 0), endIndex);
+        return Promise.resolve(value);
+    }
+
+    cancelPendingRequests() {
+        // TODO: Make sure this is implemented.
+    }
+}
+
+// TODO: Make sure to remove this.
 // TODO: Reach into QueryResult and request more batches.
 class QueryRowSource {
     constructor(rows) {
@@ -35,16 +153,16 @@ class QueryRowSource {
         this.rows.push({key: this.rows.length, row: row});
     }
 
-    // Returns the set of rows in [startKey, some_end_key]
-    getRowsFrom(startKey) {
-        console.log("getRowsFrom", startKey);
+    // Returns the set of rows in [startIndex, some_end_key]
+    getRowsFrom(startIndex) {
+        console.log("getRowsFrom", startIndex);
         if (this.pendingAfter != null) {
-            console.log("getRowsFrom(", startKey, ") after ", this.pendingAfter);
+            console.log("getRowsFrom(", startIndex, ") after ", this.pendingAfter);
             return;
         }
         let ret = [];
-        let e = Math.min(this.rows.length, startKey + 10);
-        for (let i = startKey; i < e; i++) {
+        let e = Math.min(this.rows.length, startIndex + 10);
+        for (let i = startIndex; i < e; i++) {
             ret.push(this.rows[i]);
         }
         // TODO: Support loading more data... or don't depend on QueryResult.
@@ -56,17 +174,17 @@ class QueryRowSource {
         return this.getRowsFrom(0);
     }
 
-    // Returns the set of rows in [some_start_key, endKey).
-    getRowsBefore(endKey) {
-        console.log("getRowsBefore", endKey);
+    // Returns the set of rows in [some_start_key, endIndex).
+    getRowsBefore(endIndex) {
+        console.log("getRowsBefore", endIndex);
         if (this.pendingBefore != null) {
-            console.log("getRowsBefore(", endKey, ") before ", this.pendingBefore);
+            console.log("getRowsBefore(", endIndex, ") before ", this.pendingBefore);
             return;
         }
 
         let ret = [];
-        let startKey = Math.max(0, endKey - 10);
-        for (let i = startKey; i < endKey; i++) {
+        let startIndex = Math.max(0, endIndex - 10);
+        for (let i = startIndex; i < endIndex; i++) {
             ret.push(this.rows[i]);
         }
         return Promise.resolve(ret);
@@ -82,6 +200,7 @@ class QueryRowSource {
 class TableViewer {
     // el should be a div.
     constructor(el, rowSource) {
+        console.log("Constructing TableViewer with el ", el);
         this.el = el;
         this.rowSource = rowSource;
         // Set to true when the end of the data is reached and present in the DOM.
@@ -122,6 +241,8 @@ class TableViewer {
 
     // TODO: Rename to "update" -- this doesn't redraw per se.
     redraw() {
+        let preload_ratio = 0.5;  // TODO: What number?
+        let overscroll_ratio = 1.5;  // TODO: A bigger number.
         console.log("TableViewer redraw", ++this.numRedraws);
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
@@ -130,6 +251,7 @@ class TableViewer {
             if (!this.underflow) {
                 console.log("rows from start");
                 let generation = ++this.queryGeneration;
+                console.log("rowSource:", this.rowSource);
                 this.rowSource.getRowsFromStart().then((res) => this._supplyRows(generation, res));
             }
             return;
@@ -138,9 +260,35 @@ class TableViewer {
         let scrollTop = this.rowScroller.scrollTop;
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = rowsBoundingRect.top > scrollerBoundingRect.top;
+        let loadPreceding = rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
         let loadSubsequent =
-            rowsBoundingRect.bottom < scrollerBoundingRect.bottom && !this.underflow;
+            rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
+
+        console.log("this.rowHolder", this.rowHolder);
+        let middleIndex = Math.floor(this.rowHolder.children.length / 2);
+        console.log("middleIndex", middleIndex);
+        let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
+
+        // TODO: Delete earlier rows too.
+        if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
+            
+            console.log("Deleting rows >= index", middleIndex);
+            let toDelete = this.rowHolder.children.length - middleIndex;
+            for (let i = 0; i < toDelete; i++) {
+                this.rowHolder.removeChild(this.rowHolder.lastChild);
+            }
+            this.underflow = false;
+        } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
+            let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
+            console.log("Deleting rows < index", middleIndex);
+            let toDelete = middleIndex;
+            for (let i = 0; i < toDelete; i++) {
+                this.rowHolder.removeChild(this.rowHolder.firstChild);
+            }
+            this.frontOffset += toDelete;
+            console.log("incred frontOffset by ", toDelete, "to", this.frontOffset);
+            // TODO: Set Padding/margin above elements for smooth scrolling.
+        }
 
         // TODO: Well, we don't really use generation, do we.
         let generation = this.queryGeneration;
@@ -150,9 +298,9 @@ class TableViewer {
                 rows => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
-            console.log("loadSubsequent");
+            console.log("loadSubsequent, length ", this.rowHolder.children.length, "frontOffset", this.frontOffset);
             // TODO: Grotesque rowHolder.children.length
-            let rowsAfter = this.rowSource.getRowsFrom(this.rowHolder.children.length - this.frontOffset).then(
+            let rowsAfter = this.rowSource.getRowsFrom(this.frontOffset + this.rowHolder.children.length).then(
                 res => this._supplyRows(generation, res));
         }
     }
@@ -181,9 +329,12 @@ class TableViewer {
         for (let row of rows) {
             this.rowHolder.insertBefore(TableViewer.makeDOMRow(row), frontNode);
         }
+        this.frontOffset -= rows.length;
         // We might need to load more rows.
         // TODO: Remove 1000.
-        setTimeout(() => this.redraw(), 1000);
+        if (rows.length > 0) {
+            setTimeout(() => this.redraw(), 1000);
+        }
     }
 
     _supplyRows(generation, res) {
@@ -205,7 +356,9 @@ class TableViewer {
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
         // TODO: Remove 1000.
-        setTimeout(() => this.redraw(), 1000);
+        if (rows.length > 0) {
+            setTimeout(() => this.redraw(), 1000);
+        }
     }
 
     static makeDOMRow(row) {

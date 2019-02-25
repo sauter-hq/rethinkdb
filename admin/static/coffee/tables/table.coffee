@@ -380,6 +380,8 @@ class TableMainView extends Backbone.View
             type: 'table'
         )
 
+        @rowSource = new TableRowSource(r, driver, @model.get('id'))
+
     set_indexes: (indexes) =>
         if not @indexes?
             @indexes = indexes
@@ -416,6 +418,11 @@ class TableMainView extends Backbone.View
 
         # Display server reconfiguration
         @$('.reconfigure-panel').html @reconfigure.render().el
+
+        # TODO: Put the table viewer in a nice looking panel.
+        # TODO: [0]?
+        @table_viewer = new TableViewer(@$('.table_viewer')[0], @rowSource);
+        @table_viewer.redraw();
 
         @
 
