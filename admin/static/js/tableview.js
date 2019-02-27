@@ -24,6 +24,7 @@ class TableRowSource {
         // TODO: In getRowsFrom, we need to actually ensure the rows are
         // processed in the same order the promises get pulsed.  It's fragile
         // logic.  Does JS have in-order channels?
+        // TODO: Only allow one request above and below at a time.  (Or appropriate strict usage.)
 
         this.rightCompletionCbs = [];
     }
@@ -46,11 +47,13 @@ class TableRowSource {
             let ix = startIndex - this.cachedRowsOffset;
             // TODO: Don't return _all_ the rows, just... 30.
             return Promise.resolve(
-                {rows: this.cachedRows.slice(ix, Math.min(this.cachedRows.length, ix + query_limit)), isEnd: this.cachedRowsIsEnd}
+                {rows: this.cachedRows.slice(ix, Math.min(this.cachedRows.length, ix + query_limit)),
+                 isEnd: this.cachedRowsIsEnd}
             );
         }
         if (startIndex > endOffset) {
-            return Promise.reject("getRowsFrom past the end");
+            return Promise.reject("getRowsFrom past the end (" + startIndex + ">" + endOffset + ") len = " 
+                + this.cachedRows.length + ", offset = " + this.cachedRowsOffset);
         }
 
         // TODO: Look at all code for == and !=.
@@ -206,6 +209,9 @@ class TableViewer {
         // Set to true when the end of the data is reached and present in the DOM.
         this.underflow = false;
         this.frontOffset = 0;
+        // TODO: Simplify the data storage?
+        this.waitingBelow = false;
+        this.waitingAbove = false;
 
         this.queryGeneration = 0;
         this.renderedGeneration = 0;
@@ -260,8 +266,8 @@ class TableViewer {
         let scrollTop = this.rowScroller.scrollTop;
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
-        let loadSubsequent =
+        let loadPreceding = !this.waitingAbove && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
+        let loadSubsequent = !this.waitingBelow &&
             rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
 
         console.log("this.rowHolder", this.rowHolder);
@@ -294,11 +300,13 @@ class TableViewer {
         let generation = this.queryGeneration;
         if (loadPreceding) {
             console.log("loadPreceding");
+            this.waitingAbove = true;
             let rowsBefore = this.rowSource.getRowsBefore(this.frontOffset).then(
                 rows => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
             console.log("loadSubsequent, length ", this.rowHolder.children.length, "frontOffset", this.frontOffset);
+            this.waitingBelow = true;
             // TODO: Grotesque rowHolder.children.length
             let rowsAfter = this.rowSource.getRowsFrom(this.frontOffset + this.rowHolder.children.length).then(
                 res => this._supplyRows(generation, res));
@@ -315,13 +323,18 @@ class TableViewer {
     }
 
     _supplyRowsBefore(generation, rows) {
+        if (!this.waitingAbove) {
+            console.log("_supplyRowsBefore while not waitingAbove");
+        }
+        this.waitingAbove = false;
         if (generation < this.renderedGeneration) {
             console.log("Ancient request from previous generation ignored");
             return;
         }
         console.log("Supplying rows before", rows);
         if (generation > this.renderedGeneration) {
-            // TODO: Think this generation stuff through.
+            console.log("wiping");
+            // TODO: Think this generation stuff through.  Probably have generationed waitingAbove/Below.
             this.wipe();
         }
         this.renderedGeneration = generation;
@@ -330,6 +343,7 @@ class TableViewer {
             this.rowHolder.insertBefore(TableViewer.makeDOMRow(row), frontNode);
         }
         this.frontOffset -= rows.length;
+        console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
         // TODO: Remove 1000.
         if (rows.length > 0) {
@@ -339,6 +353,10 @@ class TableViewer {
 
     _supplyRows(generation, res) {
         let {rows, isEnd} = res;
+        if (!this.waitingBelow) {
+            console.log("_supplyRows while not waitingBelow");
+        }
+        this.waitingBelow = false;
         if (generation < this.renderedGeneration) {
             console.log("Ancient request from previous generation ignored");
             return;
