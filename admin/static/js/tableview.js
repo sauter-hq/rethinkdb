@@ -379,6 +379,120 @@ class TableViewer {
         }
     }
 
+    static isPlainObject(value) {
+        // TODO: Figure out the appropriate choice here.
+        return Object.prototype.toString.call(value) == "[object Object]";
+    }
+
+    static build_map_keys(keys_count, result) {
+        if (this.isPlainObject(result)) {
+            let rt = result.$reql_type$;
+            if (rt === 'TIME' || rt === 'BINARY') {
+                keys_count.primitive_value_count++;
+            } else {
+                for (let key in result) {
+                    let kco = keys_count.object;
+                    if (kco === undefined) {
+                        kco = {};
+                        keys_count.object = kco;  // Only defined if there are keys!
+                    }
+                    if (kco[key] === undefined) {
+                        kco[key] = {primitive_value_count: 0};
+                    }
+                    this.build_map_keys(kco[key], result[key]);
+                }
+            }
+        } else {
+            keys_count.primitive_value_count++;
+        }
+    }
+
+    // Compute occurrence of each key. The occurence can be a float since we
+    // compute the average occurence of all keys for an object.
+    static compute_occurrence(keys_count) {
+        let kco = keys_count.object;
+        if (kco === undefined) {
+            // Just a primitive value.
+            keys_count.occurrence = keys_count.primitive_value_count;
+        } else {
+            let count_key = keys_count.primitive_value_count > 0 ? 1 : 0;
+            let count_occurrence = keys_count.primitive_value_count;
+            for (let key in kco) {
+                let row = kco[key];
+                count_key++;
+                this.compute_occurrence(row);
+                count_occurrence += row.occurrence;
+            }
+            keys_count.occurrence = count_occurrence/count_key;  // count_key cannot be 0.
+        }
+    }
+
+    static get primitive_key() { return '_-primitive value-_--'; } // TODO: Gross.
+
+    // Sort the keys per level.
+    static order_keys(keys) {
+        let copy_keys = [];
+        if (keys.object !== undefined) {
+            for (let key in keys.object) {
+                let value = keys.object[key];
+                if (this.isPlainObject(value)) {
+                    this.order_keys(value);
+                }
+                copy_keys.push({key: key, value: value.occurrence});
+            }
+            // If we could know if a key is a primary key, that would be awesome.
+            // TODO: ^
+            // TODO: Figure out and explain why the values are reverse-sorted relative to the keys.
+            copy_keys.sort((a, b) =>
+                b.value - a.value || (a.key > b.key ? 1 : -1));
+        }
+        keys.sorted_keys = copy_keys.map(d => d.key);
+        if (keys.primitive_value_count > 0) {
+            keys.sorted_keys.unshift(this.primitive_key);
+        }
+    }
+
+    // Flatten the object returns by build_map_keys().  We get back an array of keys.
+    static get_all_attr(keys_count, attr, prefix, prefix_str) {
+        for (let key of keys_count.sorted_keys) {
+            if (key === this.primitive_key) {
+                let new_prefix_str = prefix_str;
+                // Pop the last dot.
+                if (new_prefix_str.length > 0) {
+                    new_prefix_str = new_prefix_str.slice(0, -1);
+                }
+                attr.push({prefix: prefix, prefix_str: new_prefix_str, is_primitive: true});
+            } else {
+                if (keys_count.object[key].object !== undefined) {
+                    let new_prefix = prefix.slice();
+                    new_prefix.push(key);
+                    this.get_all_attr(keys_count.object[key], attr, new_prefix, (prefix_str || '') + key + '.');
+                } else {
+                    attr.push({prefix: prefix, prefix_str: prefix_str, key: key});
+                }
+            }
+        }
+    }
+
+    static flatten_attrs(results) {
+        let keys_count = {primitive_value_count: 0};
+        for (let result_entry of results) {
+            this.build_map_keys(keys_count, result_entry);
+        }
+        this.compute_occurrence(keys_count);
+        this.order_keys(keys_count);
+
+        let flatten_attr = [];
+        this.get_all_attr(keys_count, flatten_attr, [], '');
+
+        for (let index in flatten_attr) {
+            flatten_attr[index].col = index;
+        }
+        return flatten_attr;
+    }
+
+
+
     static makeDOMRow(row) {
         let rowEl = document.createElement("p");
         rowEl.appendChild(document.createTextNode(JSON.stringify(row)));
