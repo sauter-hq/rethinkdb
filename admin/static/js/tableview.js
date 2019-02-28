@@ -511,7 +511,23 @@ class TableViewer {
             this.tag_record(new_document, i + 1);
             document_list.push(document);
         }
-        return helpMakeDOMRow(document_list)
+        return this.helpMakeDOMRows(document_list)
+    }
+
+    static tag_record(doc, index) {
+        // TODO: Use query position to tag record.
+    }
+
+    static makeDOMCell(value, col) {
+        // TODO: Implement for real.
+        let data = this.compute_data_for_type(value, col);
+        let el = document.createElement('td');
+        el.appendChild(document.createTextNode(data.value + ''));
+        return el;
+    }
+
+    static helpMakeDOMRows(document_list) {
+        // TODO: Implement for real.
     }
 
     static date_to_string(value) {
@@ -568,11 +584,6 @@ class TableViewer {
         return data;
     }
 
-    static makeDOMCell(value, col) {
-        let data = this.compute_data_for_type(value, col);
-        // TODO: Implement.
-        return undefined;
-    }
 
 
     // TODO: Remove.
