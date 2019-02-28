@@ -491,8 +491,92 @@ class TableViewer {
         return flatten_attr;
     }
 
+    static json_to_table_get_values(result, flatten_attr) {
+        let document_list = [];
+        for (let i in result) {
+            let single_result = result[i];
+            let new_document = {cells: []};
+            for (let col in flatten_attr) {
+                let attr_obj = flatten_attr[col];
+                let key = attr_obj.key;
+                let value = single_result;
+                for (let prefix of attr_obj.prefix) {
+                    value = value && value[prefix];
+                }
+                if (!attr_obj.is_primitive) {
+                    value = value ? value[key] : undefined;
+                }
+                new_document.cells.push(this.makeDOMCell(value, col));
+            }
+            let index = i + 1;
+            this.tag_record(new_document, i + 1);
+            document_list.push(document);
+        }
+        return helpMakeDOMRow(document_list)
+    }
+
+    static date_to_string(value) {
+        return util.date_to_string(value);  // TODO: Implement.
+    }
+
+    static binary_to_string(value) {
+        return util.binary_to_string(value);  // TODO: Implement.
+    }
+
+    static compute_data_for_type(value, col) {
+        let data = {value: value, class_value: 'value-' + col};
+        let value_type = typeof value;
+        if (value === null) {
+            data.value = 'null';
+            data.classname = 'jta_null';
+        } else if (value === undefined) {
+            data.value = 'undefined';
+            data.classname = 'jta_undefined';
+        } else if (value.constructor && value.constructor === Array) {
+            if (value.length === 0) {
+                data.value = '[ ]';
+                data.classname = 'empty array';
+            } else {
+                data.value = '[ ... ]';
+                data.data_to_expand = JSON.stringify(value);
+            }
+        } else if (this.isPlainObject(value)) {
+            if (value.$reql_type$ === 'TIME') {
+                data.value = this.date_to_string(value);
+                data.classname = 'jta_date';
+            } else if (value.$reql_type$ === 'BINARY') {
+                data.value = this.binary_to_string(value);
+                data.classname = 'jta_bin';
+            } else {
+                data.value = '{ ... }';
+                data.is_object = true;
+            }
+        } else if (value_type === 'number') {
+            data.classname = 'jta_num';
+        } else if (value_type === 'string') {
+            if (/^(http:https):\/\/[^\s]+$/i.test(value)) {
+                data.classname = 'jta_url';
+            } else if (/^[a-z0-9]+@[a-z0-9]+.[a-z0-9]{2,4}/i.test(value)) {
+                data.classname = 'jta_email';
+            } else {
+                data.classname = 'jta_string';
+            }
+        } else if (value_type === 'boolean') {
+            data.classname = 'jta_bool';
+            data.value = value === true ? 'true' : 'false';
+        }
+
+        return data;
+    }
+
+    static makeDOMCell(value, col) {
+        let data = this.compute_data_for_type(value, col);
+        // TODO: Implement.
+        return undefined;
+    }
 
 
+    // TODO: Remove.
     static makeDOMRow(row) {
         let rowEl = document.createElement("p");
         rowEl.appendChild(document.createTextNode(JSON.stringify(row)));
