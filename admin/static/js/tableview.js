@@ -631,6 +631,18 @@ class TableViewer {
             this.rowHolder.appendChild(tr);
         }
 
+        if (trs.length > 0) {
+            let tr = trs[0];
+            let i = 0;
+            for (let child of tr.children) {
+                let rect = child.getBoundingClientRect();
+                console.log("Child ", i, "width:", rect.width);
+                // TODO: -4?  Okay.  Get intellectual control of layout.
+                attr_row.children[i].style.width = (rect.width - 4) + "px";
+                i++;
+            }
+        }
+
     }
 
 
