@@ -208,6 +208,9 @@ class TableViewer {
         // Set to true when the end of the data is reached and present in the DOM.
         this.underflow = false;
         this.frontOffset = 0;
+        // This may duplicate a subregion of an array in the data source -- and parallels elements
+        // in this.rowHolder, but the row objects are immutable shared.
+        this.rows = [];
         // TODO: Simplify the data storage?
         this.waitingBelow = false;
         this.waitingAbove = false;
@@ -224,7 +227,12 @@ class TableViewer {
         this.rowScroller = document.createElement('div');
         this.rowScroller.className = 'table_viewer_scroller';
         el.appendChild(this.rowScroller);
-        this.rowHolder = document.createElement('div');
+
+        this.columnHeaders = document.createElement('table');
+        this.columnHeaders.className = 'table_viewer_headers';
+        this.rowScroller.appendChild(this.columnHeaders);
+
+        this.rowHolder = document.createElement('table');
         this.rowHolder.className = 'table_viewer_holder';
         this.rowScroller.appendChild(this.rowHolder);
 
@@ -236,12 +244,6 @@ class TableViewer {
         //   <div "rowScroller"><div "rowHolder">rows...</div></div>
         // </div>
         // But columnHeaders is absent right now.  (And no rows have been loaded either.)
-    }
-
-    wipe() {
-        while (this.rowHolder.firstChild) {
-            this.rowHolder.removeChild(this.rowHolder.firstChild);
-        }
     }
 
     // TODO: Rename to "update" -- this doesn't redraw per se.
@@ -257,6 +259,7 @@ class TableViewer {
                 console.log("rows from start");
                 let generation = ++this.queryGeneration;
                 console.log("rowSource:", this.rowSource);
+                this.waitingBelow = true;
                 this.rowSource.getRowsFromStart().then((res) => this._supplyRows(generation, res));
             }
             return;
@@ -279,17 +282,15 @@ class TableViewer {
             
             console.log("Deleting rows >= index", middleIndex);
             let toDelete = this.rowHolder.children.length - middleIndex;
-            for (let i = 0; i < toDelete; i++) {
-                this.rowHolder.removeChild(this.rowHolder.lastChild);
-            }
+            this.rows.splice(this.rows.length - toDelete, toDelete);
+            this.setDOMRows();
             this.underflow = false;
         } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
             let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
             console.log("Deleting rows < index", middleIndex);
             let toDelete = middleIndex;
-            for (let i = 0; i < toDelete; i++) {
-                this.rowHolder.removeChild(this.rowHolder.firstChild);
-            }
+            this.rows.splice(0, toDelete);
+            this.setDOMRows();
             this.frontOffset += toDelete;
             console.log("incred frontOffset by ", toDelete, "to", this.frontOffset);
             // TODO: Set Padding/margin above elements for smooth scrolling.
@@ -324,6 +325,7 @@ class TableViewer {
     _supplyRowsBefore(generation, rows) {
         if (!this.waitingAbove) {
             console.log("_supplyRowsBefore while not waitingAbove");
+            return;
         }
         this.waitingAbove = false;
         if (generation < this.renderedGeneration) {
@@ -334,13 +336,11 @@ class TableViewer {
         if (generation > this.renderedGeneration) {
             console.log("wiping");
             // TODO: Think this generation stuff through.  Probably have generationed waitingAbove/Below.
-            this.wipe();
+            this.rows = [];
         }
         this.renderedGeneration = generation;
-        let frontNode = this.rowHolder.firstChild;  // possibly null.
-        for (let row of rows) {
-            this.rowHolder.insertBefore(TableViewer.makeDOMRow(row), frontNode);
-        }
+        this.rows = rows.concat(this.rows);
+        this.setDOMRows();
         this.frontOffset -= rows.length;
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
@@ -354,6 +354,7 @@ class TableViewer {
         let {rows, isEnd} = res;
         if (!this.waitingBelow) {
             console.log("_supplyRows while not waitingBelow");
+            return;
         }
         this.waitingBelow = false;
         if (generation < this.renderedGeneration) {
@@ -362,13 +363,14 @@ class TableViewer {
         }
         console.log("Supplying rows", rows);
         if (generation > this.renderedGeneration) {
-            this.wipe();
+            this.rows = [];
         }
         this.renderedGeneration = generation;
         // TODO: We falsely assume append-only.
         for (let row of rows) {
-            this.rowHolder.appendChild(TableViewer.makeDOMRow(row));
+            this.rows.push(row);
         }
+        this.setDOMRows();
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
@@ -427,6 +429,7 @@ class TableViewer {
     }
 
     static get primitive_key() { return '_-primitive value-_--'; } // TODO: Gross.
+    static get className() { return 'tableviewer'; }
 
     // Sort the keys per level.
     static order_keys(keys) {
@@ -473,10 +476,10 @@ class TableViewer {
         }
     }
 
-    static flatten_attrs(results) {
+    static flatten_attrs(rows) {
         let keys_count = {primitive_value_count: 0};
-        for (let result_entry of results) {
-            this.build_map_keys(keys_count, result_entry);
+        for (let row of rows) {
+            this.build_map_keys(keys_count, row);
         }
         this.compute_occurrence(keys_count);
         this.order_keys(keys_count);
@@ -490,10 +493,25 @@ class TableViewer {
         return flatten_attr;
     }
 
-    static json_to_table_get_values(result, flatten_attr) {
+    static json_to_table_get_attr(flatten_attr) {
+        let tr = document.createElement('tr');
+        tr.className = this.className + ' attrs';
+        for (let col in flatten_attr) {
+            let attr_obj = flatten_attr[col];
+            console.log("Column attr: ", attr_obj);
+            let el = document.createElement('td');
+            let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc), attr_obj.key);
+            el.appendChild(document.createTextNode(text));
+            tr.appendChild(el);
+        }
+        return tr;
+    }
+
+    static json_to_table_get_values(rows, flatten_attr) {
+        console.log("json_to_table_get_values");
         let document_list = [];
-        for (let i in result) {
-            let single_result = result[i];
+        for (let i in rows) {
+            let single_result = rows[i];
             let new_document = {cells: []};
             for (let col in flatten_attr) {
                 let attr_obj = flatten_attr[col];
@@ -509,7 +527,7 @@ class TableViewer {
             }
             let index = i + 1;
             this.tag_record(new_document, i + 1);
-            document_list.push(document);
+            document_list.push(new_document);
         }
         return this.helpMakeDOMRows(document_list)
     }
@@ -527,7 +545,16 @@ class TableViewer {
     }
 
     static helpMakeDOMRows(document_list) {
-        // TODO: Implement for real.
+        let ret = [];
+        for (let i in document_list) {
+            let el = document.createElement('tr');
+            el.className = this.className;
+            for (let cell of document_list[i].cells) {
+                el.appendChild(cell);
+            }
+            ret.push(el);
+        }
+        return ret;
     }
 
     static date_to_string(value) {
@@ -584,6 +611,27 @@ class TableViewer {
         return data;
     }
 
+    setDOMRows() {
+        console.log("setDOMRows");
+        while (this.rowHolder.firstChild) {
+            this.rowHolder.removeChild(this.rowHolder.firstChild);
+        }
+        while (this.columnHeaders.firstChild) {
+            this.columnHeaders.removeChild(this.columnHeaders.firstChild);
+        }
+
+
+        let attrs = TableViewer.flatten_attrs(this.rows);
+        let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
+        let attr_row = TableViewer.json_to_table_get_attr(attrs);
+
+        this.columnHeaders.appendChild(attr_row);
+
+        for (let tr of trs) {
+            this.rowHolder.appendChild(tr);
+        }
+
+    }
 
 
     // TODO: Remove.
