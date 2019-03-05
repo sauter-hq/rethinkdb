@@ -390,21 +390,25 @@ class TableViewer {
             let rt = result.$reql_type$;
             if (rt === 'TIME' || rt === 'BINARY') {
                 keys_count.primitive_value_count++;
+                keys_count.new_primitive_value_count++;
             } else {
                 for (let key in result) {
                     let kco = keys_count.object;
                     if (kco === undefined) {
                         kco = {};
                         keys_count.object = kco;  // Only defined if there are keys!
+                        keys_count.new_keys = {};
                     }
                     if (kco[key] === undefined) {
-                        kco[key] = {primitive_value_count: 0};
+                        kco[key] = this.initial_keys_count();
+                        keys_count.new_keys[key] = true;
                     }
                     this.build_map_keys(kco[key], result[key]);
                 }
             }
         } else {
             keys_count.primitive_value_count++;
+            keys_count.new_primitive_value_count++;
         }
     }
 
@@ -440,7 +444,9 @@ class TableViewer {
                 if (this.isPlainObject(value)) {
                     this.order_keys(value);
                 }
-                copy_keys.push({key: key, value: value.occurrence});
+                if (keys.new_keys && keys.new_keys[key]) {
+                    copy_keys.push({key: key, value: value.occurrence});
+                }
             }
             // If we could know if a key is a primary key, that would be awesome.
             // TODO: ^
@@ -449,9 +455,11 @@ class TableViewer {
                 b.value - a.value || (a.key > b.key ? 1 : -1));
         }
         keys.sorted_keys = copy_keys.map(d => d.key);
-        if (keys.primitive_value_count > 0) {
+        if (keys.primitive_value_count > 0 && keys.primitive_value_count == keys.new_primitive_value_count) {
             keys.sorted_keys.unshift(this.primitive_key);
         }
+        keys.new_keys = null;
+        keys.new_primitive_value_count = 0;
     }
 
     // Flatten the object returns by build_map_keys().  We get back an array of keys.
@@ -476,21 +484,23 @@ class TableViewer {
         }
     }
 
-    static flatten_attrs(rows) {
-        let keys_count = {primitive_value_count: 0};
+    static initial_keys_count() {
+        return {primitive_value_count: 0, new_primitive_value_count: 0};
+    }
+
+    static flatten_attrs(keys_count, flatten_attr, rows) {
         for (let row of rows) {
             this.build_map_keys(keys_count, row);
         }
         this.compute_occurrence(keys_count);
         this.order_keys(keys_count);
 
-        let flatten_attr = [];
+        let orig_length = flatten_attr.length;
         this.get_all_attr(keys_count, flatten_attr, [], '');
 
-        for (let index in flatten_attr) {
-            flatten_attr[index].col = index;
+        for (let i = orig_length; i < flatten_attr.length; i++) {
+            flatten_attr[i].col = i;
         }
-        return flatten_attr;
     }
 
     static json_to_table_get_attr(flatten_attr) {
@@ -630,8 +640,9 @@ class TableViewer {
             this.columnHeaders.removeChild(this.columnHeaders.firstChild);
         }
 
-
-        let attrs = TableViewer.flatten_attrs(this.rows);
+        let keys_count = TableViewer.initial_keys_count();
+        let attrs = [];
+        TableViewer.flatten_attrs(keys_count, attrs, this.rows);
         let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
         let attr_row = TableViewer.json_to_table_get_attr(attrs);
 
