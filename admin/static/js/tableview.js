@@ -500,8 +500,18 @@ class TableViewer {
             let attr_obj = flatten_attr[col];
             console.log("Column attr: ", attr_obj);
             let el = document.createElement('td');
-            let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc), attr_obj.key);
-            el.appendChild(document.createTextNode(text));
+            if (attr_obj.key === undefined) {
+                if (attr_obj.prefix.length > 0) {
+                    let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc));
+                    el.appendChild(document.createTextNode(text + ' '));
+                }
+                let value = document.createElement('i');
+                value.appendChild(document.createTextNode('value'));
+                el.appendChild(value);
+            } else {
+                let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc), attr_obj.key);
+                el.appendChild(document.createTextNode(text));
+            }
             tr.appendChild(el);
         }
         return tr;
