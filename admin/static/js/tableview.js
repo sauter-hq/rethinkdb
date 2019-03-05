@@ -223,13 +223,18 @@ class TableViewer {
             el.removeChild(el.firstChild);
         }
 
+        let styleNode = document.createElement('style');
+        styleNode.type = "text/css";
+        this.styleNode = styleNode;
+        el.appendChild(styleNode);
+
         this.columnHeaders = null;
         this.rowScroller = document.createElement('div');
-        this.rowScroller.className = 'table_viewer_scroller';
+        this.rowScroller.className = TableViewer.className + ' table_viewer_scroller';
         el.appendChild(this.rowScroller);
 
         this.columnHeaders = document.createElement('table');
-        this.columnHeaders.className = 'table_viewer_headers';
+        this.columnHeaders.className = TableViewer.className + ' table_viewer_headers';
         this.rowScroller.appendChild(this.columnHeaders);
 
         this.rowHolder = document.createElement('table');
@@ -239,7 +244,9 @@ class TableViewer {
         this.rowScroller.onscroll = event => this.redraw();
 
         this.keys_count = TableViewer.initial_keys_count();
+        // Parallel arrays: columnSpec has stuff like column widths.
         this.flatten_attr = [];
+        this.columnSpec = [];
 
         // General structure:
         // <div "el">
@@ -513,6 +520,7 @@ class TableViewer {
             let attr_obj = flatten_attr[col];
             console.log("Column attr: ", attr_obj);
             let el = document.createElement('td');
+            el.className = 'col-' + col;
             if (attr_obj.key === undefined) {
                 if (attr_obj.prefix.length > 0) {
                     let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc));
@@ -564,7 +572,25 @@ class TableViewer {
         let data = this.compute_data_for_type(value, col);
         let el = document.createElement('td');
         el.appendChild(document.createTextNode(data.value + ''));
+        el.className = 'col-' + col;
         return el;
+    }
+
+    setColumnWidth(col, width) {
+        console.log("setColumnWidth", col, ", ", width);
+        let sheet = this.styleNode.sheet;
+        console.log("setColumnWidth with sheet", sheet);
+        while (sheet.cssRules.length <= col) {
+            let i = sheet.cssRules.length;
+            sheet.insertRule('.' + TableViewer.className + ' .col-' + i + ' { }', i);
+        }
+        console.log("padded out rules, deleting", col);
+        sheet.deleteRule(col);
+        console.log("deleted rule");
+        sheet.insertRule(
+            '.' + TableViewer.className + ' .col-' + col + ' { width: ' + width + 'px; }',
+            col);
+        console.log("inserted rule");
     }
 
     static helpMakeDOMRows(document_list) {
@@ -644,6 +670,9 @@ class TableViewer {
         }
 
         TableViewer.flatten_attrs(this.keys_count, this.flatten_attr, this.rows);
+        while (this.columnSpec.length < this.flatten_attr.length) {
+            this.columnSpec.push({});
+        }
         let trs = TableViewer.json_to_table_get_values(this.rows, this.flatten_attr);
         let attr_row = TableViewer.json_to_table_get_attr(this.flatten_attr);
 
@@ -660,7 +689,8 @@ class TableViewer {
                 let rect = child.getBoundingClientRect();
                 console.log("Child ", i, "width:", rect.width);
                 // TODO: -4?  Okay.  Get intellectual control of layout.
-                attr_row.children[i].style.width = (rect.width - 4) + "px";
+                let width = (rect.width - 4);
+                this.setColumnWidth(i, width);
                 i++;
             }
         }
