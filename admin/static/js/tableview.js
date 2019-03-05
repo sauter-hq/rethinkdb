@@ -228,14 +228,13 @@ class TableViewer {
         this.styleNode = styleNode;
         el.appendChild(styleNode);
 
-        this.columnHeaders = null;
+        this.columnHeaders = document.createElement('table');
+        this.columnHeaders.className = TableViewer.className + ' table_viewer_headers';
+        el.appendChild(this.columnHeaders);
+
         this.rowScroller = document.createElement('div');
         this.rowScroller.className = TableViewer.className + ' table_viewer_scroller';
         el.appendChild(this.rowScroller);
-
-        this.columnHeaders = document.createElement('table');
-        this.columnHeaders.className = TableViewer.className + ' table_viewer_headers';
-        this.rowScroller.appendChild(this.columnHeaders);
 
         this.rowHolder = document.createElement('table');
         this.rowHolder.className = 'table_viewer_holder';
@@ -454,9 +453,7 @@ class TableViewer {
                 if (this.isPlainObject(value)) {
                     this.order_keys(value);
                 }
-                if (keys.new_keys && keys.new_keys[key]) {
-                    copy_keys.push({key: key, value: value.occurrence});
-                }
+                copy_keys.push({key: key, value: value.occurrence});
             }
             // If we could know if a key is a primary key, that would be awesome.
             // TODO: ^
@@ -465,17 +462,15 @@ class TableViewer {
                 b.value - a.value || (a.key > b.key ? 1 : -1));
         }
         keys.sorted_keys = copy_keys.map(d => d.key);
-        if (keys.primitive_value_count > 0 && keys.primitive_value_count == keys.new_primitive_value_count) {
+        if (keys.primitive_value_count > 0) {
             keys.sorted_keys.unshift(this.primitive_key);
         }
-        keys.new_keys = null;
-        keys.new_primitive_value_count = 0;
     }
 
     // Flatten the object returns by build_map_keys().  We get back an array of keys.
     static get_all_attr(keys_count, attr, prefix, prefix_str) {
         for (let key of keys_count.sorted_keys) {
-            if (key === this.primitive_key) {
+            if (key === this.primitive_key && keys_count.new_primitive_value_count == keys_count.primitive_value_count) {
                 let new_prefix_str = prefix_str;
                 // Pop the last dot.
                 if (new_prefix_str.length > 0) {
@@ -488,10 +483,15 @@ class TableViewer {
                     new_prefix.push(key);
                     this.get_all_attr(keys_count.object[key], attr, new_prefix, (prefix_str || '') + key + '.');
                 } else {
-                    attr.push({prefix: prefix, prefix_str: prefix_str, key: key});
+                    if (keys_count.new_keys && keys_count.new_keys[key]) {
+                        attr.push({prefix: prefix, prefix_str: prefix_str, key: key});
+                    }
                 }
             }
         }
+        delete keys_count.new_keys;
+        delete keys_count.sorted_keys;
+        keys_count.new_primitive_value_count = 0;
     }
 
     static initial_keys_count() {
