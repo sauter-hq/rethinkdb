@@ -238,6 +238,9 @@ class TableViewer {
 
         this.rowScroller.onscroll = event => this.redraw();
 
+        this.keys_count = TableViewer.initial_keys_count();
+        this.flatten_attr = [];
+
         // General structure:
         // <div "el">
         //   <div "columnHeaders"></div>
@@ -640,11 +643,9 @@ class TableViewer {
             this.columnHeaders.removeChild(this.columnHeaders.firstChild);
         }
 
-        let keys_count = TableViewer.initial_keys_count();
-        let attrs = [];
-        TableViewer.flatten_attrs(keys_count, attrs, this.rows);
-        let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
-        let attr_row = TableViewer.json_to_table_get_attr(attrs);
+        TableViewer.flatten_attrs(this.keys_count, this.flatten_attr, this.rows);
+        let trs = TableViewer.json_to_table_get_values(this.rows, this.flatten_attr);
+        let attr_row = TableViewer.json_to_table_get_attr(this.flatten_attr);
 
         this.columnHeaders.appendChild(attr_row);
 
