@@ -462,7 +462,7 @@ class TableViewer {
                 b.value - a.value || (a.key > b.key ? 1 : -1));
         }
         keys.sorted_keys = copy_keys.map(d => d.key);
-        if (keys.primitive_value_count > 0) {
+        if (keys.primitive_value_count > 0 && keys.primitive_value_count === keys.new_primitive_value_count) {
             keys.sorted_keys.unshift(this.primitive_key);
         }
     }
@@ -471,7 +471,7 @@ class TableViewer {
     static get_all_attr(keys_count, attr, prefix, prefix_str) {
         for (let key of keys_count.sorted_keys) {
             if (key === this.primitive_key) {
-                if (keys_count.new_primitive_value_count == keys_count.primitive_value_count) {
+                if (keys_count.new_primitive_value_count === keys_count.primitive_value_count) {
                     let new_prefix_str = prefix_str;
                     // Pop the last dot.
                     if (new_prefix_str.length > 0) {
@@ -480,7 +480,7 @@ class TableViewer {
                     attr.push({prefix: prefix, prefix_str: new_prefix_str, is_primitive: true});
                 }
             } else {
-                if (keys_count.object[key] == undefined) {
+                if (keys_count.object[key] === undefined) {
                     console.log("undefined for key", key);
                 }
                 if (keys_count.object[key].object !== undefined) {
