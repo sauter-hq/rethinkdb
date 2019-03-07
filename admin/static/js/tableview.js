@@ -470,14 +470,19 @@ class TableViewer {
     // Flatten the object returns by build_map_keys().  We get back an array of keys.
     static get_all_attr(keys_count, attr, prefix, prefix_str) {
         for (let key of keys_count.sorted_keys) {
-            if (key === this.primitive_key && keys_count.new_primitive_value_count == keys_count.primitive_value_count) {
-                let new_prefix_str = prefix_str;
-                // Pop the last dot.
-                if (new_prefix_str.length > 0) {
-                    new_prefix_str = new_prefix_str.slice(0, -1);
+            if (key === this.primitive_key) {
+                if (keys_count.new_primitive_value_count == keys_count.primitive_value_count) {
+                    let new_prefix_str = prefix_str;
+                    // Pop the last dot.
+                    if (new_prefix_str.length > 0) {
+                        new_prefix_str = new_prefix_str.slice(0, -1);
+                    }
+                    attr.push({prefix: prefix, prefix_str: new_prefix_str, is_primitive: true});
                 }
-                attr.push({prefix: prefix, prefix_str: new_prefix_str, is_primitive: true});
             } else {
+                if (keys_count.object[key] == undefined) {
+                    console.log("undefined for key", key);
+                }
                 if (keys_count.object[key].object !== undefined) {
                     let new_prefix = prefix.slice();
                     new_prefix.push(key);
