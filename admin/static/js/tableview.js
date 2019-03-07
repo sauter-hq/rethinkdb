@@ -68,11 +68,12 @@ class TableRowSource {
             let rightKey = this.cachedRows.length === 0 ? r.minval :
                 this.cachedRows[this.cachedRows.length - 1][primary_key];
 
+            console.log("Querying between", rightKey, "with limit", query_limit);
             let q = this.query((table, table_config) => 
                 table.between(rightKey, r.maxval, {leftBound: 'open'})
-                    .orderBy(primary_key).limit(query_limit));
+                    .orderBy(primary_key, {index: primary_key}).limit(query_limit));
 
-            this.driver.run_once(q, (err, result) => {
+            this.driver.run_once(q, (err, results) => {
                 if (err) {
                     console.log("run_once err:", err);
                     let cbs = this.rightCompletionCbs;
@@ -81,26 +82,24 @@ class TableRowSource {
                         cb.reject(err);
                     }
                 } else {
-                    result.toArray((err, results) => {
-                        console.log("result toArray err:", err, "results:", results);
-                        let cbs = this.rightCompletionCbs;
-                        this.rightCompletionCbs = [];
-                        if (err) {
-                            for (let cb of cbs) {
-                                cb.reject(err);
-                            }
-                        } else {
-                            for (let result of results) {
-                                this.cachedRows.push(result);
-                            }
-                            let isEnd = results.length < query_limit;
-                            this.cachedRows.isEnd = isEnd;
-                            for (let cb of cbs) {
-                                console.log("calling cb with results", results);
-                                cb.resolve({rows: results, isEnd: isEnd});
-                            }
+                    console.log("results:", results);
+                    let cbs = this.rightCompletionCbs;
+                    this.rightCompletionCbs = [];
+                    if (err) {
+                        for (let cb of cbs) {
+                            cb.reject(err);
                         }
-                    });
+                    } else {
+                        for (let result of results) {
+                            this.cachedRows.push(result);
+                        }
+                        let isEnd = results.length < query_limit;
+                        this.cachedRows.isEnd = isEnd;
+                        for (let cb of cbs) {
+                            console.log("calling cb with results", results);
+                            cb.resolve({rows: results, isEnd: isEnd});
+                        }
+                    }
                 }
             });
         }
@@ -345,9 +344,9 @@ class TableViewer {
         this.frontOffset -= rows.length;
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
-        // TODO: Remove 1000.
+        // TODO: Remove 250.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw(), 1000);
+            setTimeout(() => this.redraw(), 250);
         }
     }
 
@@ -373,9 +372,9 @@ class TableViewer {
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
-        // TODO: Remove 1000.
+        // TODO: Remove 250.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw(), 1000);
+            setTimeout(() => this.redraw(), 250);
         }
     }
 
