@@ -242,9 +242,16 @@ class TableViewer {
 
         this.rowScroller.onscroll = event => this.redraw();
 
-        this.keys_count = TableViewer.initial_keys_count();
-        // Parallel arrays: columnSpec has stuff like column widths.
-        this.flatten_attr = [];
+        this.columnInfo = {
+            // holds {columnName: string, ...}
+            order: [],
+            // {key => recursive columnInfo object}
+            structure: {},
+            primitiveCount: 0,
+            objectCount: 0
+        };
+
+        // TODO: Remove this?
         this.columnSpec = [];
 
         // General structure:
@@ -394,129 +401,7 @@ class TableViewer {
         return Object.prototype.toString.call(value) == "[object Object]";
     }
 
-    static build_map_keys(keys_count, result) {
-        if (this.isPlainObject(result)) {
-            let rt = result.$reql_type$;
-            if (rt === 'TIME' || rt === 'BINARY') {
-                keys_count.primitive_value_count++;
-                keys_count.new_primitive_value_count++;
-            } else {
-                for (let key in result) {
-                    let kco = keys_count.object;
-                    if (kco === undefined) {
-                        kco = {};
-                        keys_count.object = kco;  // Only defined if there are keys!
-                        keys_count.new_keys = {};
-                    }
-                    if (kco[key] === undefined) {
-                        kco[key] = this.initial_keys_count();
-                        keys_count.new_keys[key] = true;
-                    }
-                    this.build_map_keys(kco[key], result[key]);
-                }
-            }
-        } else {
-            keys_count.primitive_value_count++;
-            keys_count.new_primitive_value_count++;
-        }
-    }
-
-    // Compute occurrence of each key. The occurence can be a float since we
-    // compute the average occurence of all keys for an object.
-    static compute_occurrence(keys_count) {
-        let kco = keys_count.object;
-        if (kco === undefined) {
-            // Just a primitive value.
-            keys_count.occurrence = keys_count.primitive_value_count;
-        } else {
-            let count_key = keys_count.primitive_value_count > 0 ? 1 : 0;
-            let count_occurrence = keys_count.primitive_value_count;
-            for (let key in kco) {
-                let row = kco[key];
-                count_key++;
-                this.compute_occurrence(row);
-                count_occurrence += row.occurrence;
-            }
-            keys_count.occurrence = count_occurrence/count_key;  // count_key cannot be 0.
-        }
-    }
-
-    static get primitive_key() { return '_-primitive value-_--'; } // TODO: Gross.
     static get className() { return 'tableviewer'; }
-
-    // Sort the keys per level.
-    static order_keys(keys) {
-        let copy_keys = [];
-        if (keys.object !== undefined) {
-            for (let key in keys.object) {
-                let value = keys.object[key];
-                if (this.isPlainObject(value)) {
-                    this.order_keys(value);
-                }
-                copy_keys.push({key: key, value: value.occurrence});
-            }
-            // If we could know if a key is a primary key, that would be awesome.
-            // TODO: ^
-            // TODO: Figure out and explain why the values are reverse-sorted relative to the keys.
-            copy_keys.sort((a, b) =>
-                b.value - a.value || (a.key > b.key ? 1 : -1));
-        }
-        keys.sorted_keys = copy_keys.map(d => d.key);
-        if (keys.primitive_value_count > 0 && keys.primitive_value_count === keys.new_primitive_value_count) {
-            keys.sorted_keys.unshift(this.primitive_key);
-        }
-    }
-
-    // Flatten the object returns by build_map_keys().  We get back an array of keys.
-    static get_all_attr(keys_count, attr, prefix, prefix_str) {
-        for (let key of keys_count.sorted_keys) {
-            if (key === this.primitive_key) {
-                if (keys_count.new_primitive_value_count === keys_count.primitive_value_count) {
-                    let new_prefix_str = prefix_str;
-                    // Pop the last dot.
-                    if (new_prefix_str.length > 0) {
-                        new_prefix_str = new_prefix_str.slice(0, -1);
-                    }
-                    attr.push({prefix: prefix, prefix_str: new_prefix_str, is_primitive: true});
-                }
-            } else {
-                if (keys_count.object[key] === undefined) {
-                    console.log("undefined for key", key);
-                }
-                if (keys_count.object[key].object !== undefined) {
-                    let new_prefix = prefix.slice();
-                    new_prefix.push(key);
-                    this.get_all_attr(keys_count.object[key], attr, new_prefix, (prefix_str || '') + key + '.');
-                } else {
-                    if (keys_count.new_keys && keys_count.new_keys[key]) {
-                        attr.push({prefix: prefix, prefix_str: prefix_str, key: key});
-                    }
-                }
-            }
-        }
-        delete keys_count.new_keys;
-        delete keys_count.sorted_keys;
-        keys_count.new_primitive_value_count = 0;
-    }
-
-    static initial_keys_count() {
-        return {primitive_value_count: 0, new_primitive_value_count: 0};
-    }
-
-    static flatten_attrs(keys_count, flatten_attr, rows) {
-        for (let row of rows) {
-            this.build_map_keys(keys_count, row);
-        }
-        this.compute_occurrence(keys_count);
-        this.order_keys(keys_count);
-
-        let orig_length = flatten_attr.length;
-        this.get_all_attr(keys_count, flatten_attr, [], '');
-
-        for (let i = orig_length; i < flatten_attr.length; i++) {
-            flatten_attr[i].col = i;
-        }
-    }
 
     static json_to_table_get_attr(flatten_attr) {
         let tr = document.createElement('tr');
@@ -526,18 +411,8 @@ class TableViewer {
             console.log("Column attr: ", attr_obj);
             let el = document.createElement('td');
             el.className = 'col-' + col;
-            if (attr_obj.key === undefined) {
-                if (attr_obj.prefix.length > 0) {
-                    let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc));
-                    el.appendChild(document.createTextNode(text + ' '));
-                }
-                let value = document.createElement('i');
-                value.appendChild(document.createTextNode('value'));
-                el.appendChild(value);
-            } else {
-                let text = attr_obj.prefix.reduceRight(((acc, cur) => cur + '.' + acc), attr_obj.key);
-                el.appendChild(document.createTextNode(text));
-            }
+            let text = attr_obj.prefix_str;
+            el.appendChild(document.createTextNode(text));
             tr.appendChild(el);
         }
         return tr;
@@ -551,13 +426,9 @@ class TableViewer {
             let new_document = {cells: []};
             for (let col in flatten_attr) {
                 let attr_obj = flatten_attr[col];
-                let key = attr_obj.key;
                 let value = single_result;
-                for (let prefix of attr_obj.prefix) {
-                    value = value && value[prefix];
-                }
-                if (!attr_obj.is_primitive) {
-                    value = value ? value[key] : undefined;
+                for (let key of attr_obj.prefix) {
+                    value = value && value[key];
                 }
                 new_document.cells.push(this.makeDOMCell(value, col));
             }
@@ -665,6 +536,109 @@ class TableViewer {
         return data;
     }
 
+    /* 
+        this.columnInfo = {
+            // holds {columnName: string, width: number}
+            order: [],
+            // {key => recursive columnInfo object}
+            structure: {},
+            primitiveCount: 0,
+            objectCount: 0
+        }; */
+
+
+    static computeOntoColumnInfo(info, row) {
+        if (this.isPlainObject(row)) {
+            info.objectCount++;
+            for (let key in row) {
+                let obj = info.structure[key];
+                if (obj === undefined) {
+                    obj = this.makeNewInfo();
+                    info.structure[key] = obj;
+                }
+                this.computeOntoColumnInfo(obj, row[key]);
+            }
+        } else {
+            info.primitiveCount++;
+        }
+    }
+
+    static makeNewInfo() {
+        return {
+            structure: {},
+            primitiveCount: 0,
+            objectCount: 0
+        };
+    }
+    
+    static makeColumnInfo() {
+        let ret = this.makeNewInfo();
+        ret.order = [];
+        return ret;
+    }
+
+    static orderColumnInfo(info) {
+        let keys = [];
+        for (let key in info.structure) {
+            this.orderColumnInfo(info.structure[key]);
+            keys.push({
+                key: key,
+                count: info.structure[key].objectCount + info.structure[key].primitiveCount
+            });
+        }
+        keys.sort((a, b) => b.count - a.count || a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        info.sorted = keys;
+    }
+
+    static computeNewColumnInfo(rows) {
+        let info = this.makeNewInfo();
+        for (let row of rows) {
+            this.computeOntoColumnInfo(info, row);
+        }
+
+        this.orderColumnInfo(info);
+        return info;
+    }
+
+    static mergeColumnInfo(columnInfo, newInfo) {
+        columnInfo.primitiveCount += newInfo.primitiveCount;
+        columnInfo.objectCount += newInfo.objectCount;
+        for (let item of newInfo.sorted) {
+            let key = item.key;
+            let obj = columnInfo.structure[key];
+            if (obj === undefined) {
+                obj = this.makeColumnInfo();
+                columnInfo.structure[key] = obj;
+                columnInfo.order.push({columnName: key});
+            }
+            this.mergeColumnInfo(obj, newInfo.structure[key]);
+        }
+    }
+
+    static updateColumnInfo(columnInfo, rows) {
+        let newInfo = this.computeNewColumnInfo(rows);
+        this.mergeColumnInfo(columnInfo, newInfo);
+    }
+
+    static helpEmitColumnInfoAttrs(prefix, onto, columnInfo) {
+        let obj = {prefix: prefix.slice(), prefix_str: prefix.join('.')};
+        onto.push(obj);
+
+        for (let orderEntry of columnInfo.order) {
+            let key = orderEntry.columnName;
+            prefix.push(key);
+            this.helpEmitColumnInfoAttrs(prefix, onto, columnInfo.structure[key]);
+            prefix.pop();
+        }
+    }
+
+    static emitColumnInfoAttrs(columnInfo) {
+        let prefix = [];
+        let onto = [];
+        this.helpEmitColumnInfoAttrs(prefix, onto, columnInfo);
+        return onto;
+    }
+
     setDOMRows() {
         console.log("setDOMRows");
         while (this.rowHolder.firstChild) {
@@ -674,12 +648,12 @@ class TableViewer {
             this.columnHeaders.removeChild(this.columnHeaders.firstChild);
         }
 
-        TableViewer.flatten_attrs(this.keys_count, this.flatten_attr, this.rows);
-        while (this.columnSpec.length < this.flatten_attr.length) {
-            this.columnSpec.push({});
-        }
-        let trs = TableViewer.json_to_table_get_values(this.rows, this.flatten_attr);
-        let attr_row = TableViewer.json_to_table_get_attr(this.flatten_attr);
+        // TODO: We can just pass in unseen rows.
+        TableViewer.updateColumnInfo(this.columnInfo, this.rows);
+        let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
+
+        let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
+        let attr_row = TableViewer.json_to_table_get_attr(attrs);
 
         this.columnHeaders.appendChild(attr_row);
 
