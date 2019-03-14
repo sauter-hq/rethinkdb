@@ -621,8 +621,10 @@ class TableViewer {
     }
 
     static helpEmitColumnInfoAttrs(prefix, onto, columnInfo) {
-        let obj = {prefix: prefix.slice(), prefix_str: prefix.join('.')};
-        onto.push(obj);
+        if (prefix.length > 0 || columnInfo.primitiveCount > 0) {
+            let obj = {prefix: prefix.slice(), prefix_str: prefix.join('.')};
+            onto.push(obj);
+        }
 
         for (let orderEntry of columnInfo.order) {
             let key = orderEntry.columnName;
