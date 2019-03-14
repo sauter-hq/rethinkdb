@@ -146,11 +146,23 @@ This will also help porting if we move to another CSS preprocessor (say scss)
 
 tr.tableviewer td {
     border: 1px solid red;  // TODO
+    white-space: nowrap;
 }
 
 tr.tableviewer.attrs td {
     border: 1px solid green;  // TODO
 }
+
+tr.tableviewer .expand, tr.tableviewer .collapse {
+    float: right;
+    color: blue;
+}
+
+tr.tableviewer .expand:hover, tr.tableviewer .collapse:hover {
+    cursor: pointer;
+    color: red;
+}
+
 
 .tree-view2 {
     font-family: @sans;

@@ -250,16 +250,14 @@ class TableViewer {
         this.rowScroller.onscroll = event => this.redraw();
 
         this.columnInfo = {
-            // holds {columnName: string, ...}
+            // holds {columnName: string, display:, ...}
             order: [],
             // {key => recursive columnInfo object}
             structure: {},
             primitiveCount: 0,
-            objectCount: 0
+            objectCount: 0,
+            display: 'expanded'
         };
-
-        // TODO: Remove this?
-        this.columnSpec = [];
 
         // General structure:
         // <div "el">
@@ -410,16 +408,39 @@ class TableViewer {
 
     static get className() { return 'tableviewer'; }
 
-    static json_to_table_get_attr(flatten_attr) {
+    json_to_table_get_attr(flatten_attr) {
         let tr = document.createElement('tr');
-        tr.className = this.className + ' attrs';
+        tr.className = TableViewer.className + ' attrs';
         for (let col in flatten_attr) {
             let attr_obj = flatten_attr[col];
             console.log("Column attr: ", attr_obj);
             let el = document.createElement('td');
             el.className = 'col-' + col;
+
+            if (attr_obj.columnInfo.display === 'collapsed') {
+                let arrowNode = document.createElement('div');
+                arrowNode.appendChild(document.createTextNode(' >'));
+                arrowNode.className = 'expand';
+                arrowNode.onclick = (event) => {
+                    attr_obj.columnInfo.display = 'expanded';
+                    this.setDOMRows();
+                };
+                el.appendChild(arrowNode);
+            } else if (attr_obj.columnInfo.display === 'expanded') {
+                let arrowNode = document.createElement('div');
+                arrowNode.appendChild(document.createTextNode(' <'));
+                arrowNode.className = 'collapse';
+                arrowNode.onclick = (event) => {
+                    attr_obj.columnInfo.display = 'collapsed';
+                    this.setDOMRows();
+                };
+                el.appendChild(arrowNode);
+            }
+
             let text = attr_obj.prefix_str;
             el.appendChild(document.createTextNode(text));
+
+
             tr.appendChild(el);
         }
         return tr;
@@ -581,6 +602,7 @@ class TableViewer {
     static makeColumnInfo() {
         let ret = this.makeNewInfo();
         ret.order = [];
+        ret.display = 'collapsed';
         return ret;
     }
 
@@ -634,8 +656,12 @@ class TableViewer {
 
     static helpEmitColumnInfoAttrs(prefix, onto, columnInfo) {
         if (prefix.length > 0 || columnInfo.primitiveCount > 0) {
-            let obj = {prefix: prefix.slice(), prefix_str: prefix.join('.')};
+            let obj = {prefix: prefix.slice(), prefix_str: prefix.join('.'), columnInfo: columnInfo};
             onto.push(obj);
+        }
+
+        if (columnInfo.display === 'collapsed') {
+            return;
         }
 
         for (let orderEntry of columnInfo.order) {
@@ -667,7 +693,7 @@ class TableViewer {
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
 
         let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
-        let attr_row = TableViewer.json_to_table_get_attr(attrs);
+        let attr_row = this.json_to_table_get_attr(attrs);
 
         this.columnHeaders.appendChild(attr_row);
 
