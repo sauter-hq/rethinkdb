@@ -27,6 +27,13 @@ class TableRowSource {
         // TODO: Only allow one request above and below at a time.  (Or appropriate strict usage.)
 
         this.rightCompletionCbs = [];
+
+        this.primaryKey = 'id';  // TODO: Don't hardcode this.
+    }
+
+    // Other data sources might return null.
+    primaryKeyOrNull() {
+        return this.primaryKey;
     }
 
     // Takes a ((reql_table, table_config) -> reql_query) function and returns a reql query.
@@ -64,7 +71,7 @@ class TableRowSource {
         });
 
         if (needsQuery) {
-            let primary_key = 'id';  // TODO: Don't hardcode this.
+            let primary_key = this.primaryKey;
             let rightKey = this.cachedRows.length === 0 ? r.minval :
                 this.cachedRows[this.cachedRows.length - 1][primary_key];
 
@@ -577,26 +584,31 @@ class TableViewer {
         return ret;
     }
 
-    static orderColumnInfo(info) {
+    static orderColumnInfo(pkeyOrNull, info) {
         let keys = [];
         for (let key in info.structure) {
-            this.orderColumnInfo(info.structure[key]);
+            this.orderColumnInfo(null, info.structure[key]);
             keys.push({
                 key: key,
                 count: info.structure[key].objectCount + info.structure[key].primitiveCount
             });
         }
-        keys.sort((a, b) => b.count - a.count || a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        if (pkeyOrNull !== null) {
+            keys.sort((a, b) => b.count - a.count || (
+                (a.key == pkeyOrNull || a.key < b.key) ? -1 : a.key > b.key ? 1 : 0));
+        } else {
+            keys.sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+        }
         info.sorted = keys;
     }
 
-    static computeNewColumnInfo(rows) {
+    static computeNewColumnInfo(pkeyOrNull, rows) {
         let info = this.makeNewInfo();
         for (let row of rows) {
             this.computeOntoColumnInfo(info, row);
         }
 
-        this.orderColumnInfo(info);
+        this.orderColumnInfo(pkeyOrNull, info);
         return info;
     }
 
@@ -615,8 +627,8 @@ class TableViewer {
         }
     }
 
-    static updateColumnInfo(columnInfo, rows) {
-        let newInfo = this.computeNewColumnInfo(rows);
+    static updateColumnInfo(pkeyOrNull, columnInfo, rows) {
+        let newInfo = this.computeNewColumnInfo(pkeyOrNull, rows);
         this.mergeColumnInfo(columnInfo, newInfo);
     }
 
@@ -651,7 +663,7 @@ class TableViewer {
         }
 
         // TODO: We can just pass in unseen rows.
-        TableViewer.updateColumnInfo(this.columnInfo, this.rows);
+        TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, this.rows);
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
 
         let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
