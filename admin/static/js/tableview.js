@@ -417,24 +417,26 @@ class TableViewer {
             let el = document.createElement('td');
             el.className = 'col-' + col;
 
-            if (attr_obj.columnInfo.display === 'collapsed') {
-                let arrowNode = document.createElement('div');
-                arrowNode.appendChild(document.createTextNode(' >'));
-                arrowNode.className = 'expand';
-                arrowNode.onclick = (event) => {
-                    attr_obj.columnInfo.display = 'expanded';
-                    this.setDOMRows();
-                };
-                el.appendChild(arrowNode);
-            } else if (attr_obj.columnInfo.display === 'expanded') {
-                let arrowNode = document.createElement('div');
-                arrowNode.appendChild(document.createTextNode(' <'));
-                arrowNode.className = 'collapse';
-                arrowNode.onclick = (event) => {
-                    attr_obj.columnInfo.display = 'collapsed';
-                    this.setDOMRows();
-                };
-                el.appendChild(arrowNode);
+            if (attr_obj.columnInfo.objectCount > 0) {
+                if (attr_obj.columnInfo.display === 'collapsed') {
+                    let arrowNode = document.createElement('div');
+                    arrowNode.appendChild(document.createTextNode(' >'));
+                    arrowNode.className = 'expand';
+                    arrowNode.onclick = (event) => {
+                        attr_obj.columnInfo.display = 'expanded';
+                        this.setDOMRows();
+                    };
+                    el.appendChild(arrowNode);
+                } else if (attr_obj.columnInfo.display === 'expanded') {
+                    let arrowNode = document.createElement('div');
+                    arrowNode.appendChild(document.createTextNode(' <'));
+                    arrowNode.className = 'collapse';
+                    arrowNode.onclick = (event) => {
+                        attr_obj.columnInfo.display = 'collapsed';
+                        this.setDOMRows();
+                    };
+                    el.appendChild(arrowNode);
+                }
             }
 
             let text = attr_obj.prefix_str;
