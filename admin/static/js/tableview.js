@@ -259,6 +259,11 @@ class TableViewer {
             display: 'expanded'
         };
 
+        this.displayedInfo = {
+            displayedFrontOffset: 0,
+            attrs: [],
+        };
+
         // General structure:
         // <div "el">
         //   <div "columnHeaders"></div>
@@ -365,9 +370,8 @@ class TableViewer {
         this.frontOffset -= rows.length;
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
-        // TODO: Remove 250.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw(), 250);
+            setTimeout(() => this.redraw());
         }
     }
 
@@ -395,9 +399,8 @@ class TableViewer {
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
-        // TODO: Remove 250.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw(), 250);
+            setTimeout(() => this.redraw());
         }
     }
 
@@ -448,7 +451,7 @@ class TableViewer {
         return tr;
     }
 
-    static json_to_table_get_values(rows, flatten_attr) {
+    static json_to_table_get_values(rows, frontOffset, flatten_attr) {
         console.log("json_to_table_get_values");
         let document_list = [];
         for (let i in rows) {
@@ -463,7 +466,7 @@ class TableViewer {
                 new_document.cells.push(this.makeDOMCell(value, col));
             }
             let index = i + 1;
-            this.tag_record(new_document, i + 1);
+            this.tag_record(new_document, frontOffset + i + 1);
             document_list.push(new_document);
         }
         return this.helpMakeDOMRows(document_list)
@@ -681,30 +684,90 @@ class TableViewer {
         return onto;
     }
 
-    setDOMRows() {
-        console.log("setDOMRows");
-        while (this.rowHolder.firstChild) {
-            this.rowHolder.removeChild(this.rowHolder.firstChild);
+    applyNewAttrs(attrs) {
+        let old_attrs = this.displayedInfo.attrs;
+        let changed = false;
+        if (old_attrs.length !== attrs.length) {
+            changed = true;
+        } else {
+            for (let i = 0; i < old_attrs.length; i++) {
+                if (old_attrs[i].prefix_str !== attrs[i].prefix_str) {
+                    changed = true;
+                    break;
+                }
+            }
         }
+
+        this.displayedInfo.attrs = attrs;
+        let attrs_row = this.json_to_table_get_attr(attrs);
+
         while (this.columnHeaders.firstChild) {
             this.columnHeaders.removeChild(this.columnHeaders.firstChild);
         }
+        this.columnHeaders.appendChild(attrs_row);
+        return changed;
+    }
+
+    setDOMRows() {
+        console.log("setDOMRows");
 
         // TODO: We can just pass in unseen rows.
         TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, this.rows);
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
 
-        let trs = TableViewer.json_to_table_get_values(this.rows, attrs);
-        let attr_row = this.json_to_table_get_attr(attrs);
+        let changed = this.applyNewAttrs(attrs);
 
-        this.columnHeaders.appendChild(attr_row);
+        if (changed) {
+            // Just reconstruct all rows.
+            let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs);
 
-        for (let tr of trs) {
-            this.rowHolder.appendChild(tr);
+            while (this.rowHolder.firstChild) {
+                this.rowHolder.removeChild(this.rowHolder.firstChild);
+            }
+            for (let tr of trs) {
+                this.rowHolder.appendChild(tr);
+            }
+        } else {
+            let dfo = this.displayedInfo.displayedFrontOffset;
+            let origLength = this.rowHolder.children.length;
+            // Columns are the same, see if we can incrementally update rows.
+            if (this.frontOffset < dfo) {
+                // We have rows in front to add.
+                let trs = TableViewer.json_to_table_get_values(this.rows.slice(0, dfo - this.frontOffset),
+                    this.frontOffset, attrs);
+                let insertionPoint = this.rowHolder.firstChild;
+                for (let tr of trs) {
+                    this.rowHolder.insertBefore(tr, insertionPoint);
+                }
+            } else {
+                // We have >= 0 rows in front to delete.
+                let toDelete = Math.min(this.frontOffset - dfo, origLength);
+                for (let i = 0; i < toDelete; i++) {
+                    this.rowHolder.removeChild(this.rowHolder.firstChild);
+                }
+            }
+
+            let backOffset = this.frontOffset + this.rows.length;
+            let origBackOffset = dfo + origLength;
+            if (backOffset <= origBackOffset) {
+                // We have rows on the end to delete.
+                let toDelete = Math.min(this.rowHolder.children.length, origBackOffset - backOffset);
+                for (let i = 0; i < toDelete; i++) {
+                    this.rowHolder.removeChild(this.rowHolder.lastChild);
+                }
+            } else {
+                // We have rows on the end to add.
+                let toAdd = backOffset - origBackOffset;
+                let trs = TableViewer.json_to_table_get_values(this.rows.slice(-toAdd), backOffset - toAdd, attrs);
+                for (let tr of trs) {
+                    this.rowHolder.appendChild(tr);
+                }
+            }
         }
+        this.displayedInfo.displayedFrontOffset = this.frontOffset;
 
-        if (trs.length > 0) {
-            let tr = trs[0];
+        if (this.rowHolder.firstChild) {
+            let tr = this.rowHolder.firstChild;
             let i = 0;
             for (let child of tr.children) {
                 let rect = child.getBoundingClientRect();
