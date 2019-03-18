@@ -621,8 +621,17 @@ class TableViewer {
             });
         }
         if (pkeyOrNull !== null) {
-            keys.sort((a, b) => b.count - a.count || (
-                (a.key == pkeyOrNull || a.key < b.key) ? -1 : a.key > b.key ? 1 : 0));
+            keys.sort((a, b) => {
+                let diff = b.count - a.count;
+                if (diff !== 0) { return diff; }
+                if (a.key === pkeyOrNull) {
+                    return b.key === pkeyOrNull ? 0 : -1;
+                }
+                if (b.key === pkeyOrNull) {
+                    return 1;
+                }
+                return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+            });
         } else {
             keys.sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
         }
