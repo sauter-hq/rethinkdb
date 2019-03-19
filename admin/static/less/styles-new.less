@@ -133,7 +133,7 @@ This will also help porting if we move to another CSS preprocessor (say scss)
 .table_viewer_scroller {
     // TODO: Don't hard-code height, have it be computed based on the screen size.
     height: 250px;
-    border: 1px solid black;  // TODO
+    border: 0;
     background: white;  // TODO: no.
     padding: 0;
     overflow: auto;
@@ -144,10 +144,35 @@ This will also help porting if we move to another CSS preprocessor (say scss)
     margin: 1px;  // TODO
 }
 
-tr.tableviewer {
+div.table_viewer {
     td {
-        border: 1px solid red;  // TODO
-        white-space: nowrap;
+        max-width: 310px;
+        padding: 0px;
+        vertical-align: top;
+        border: 1px solid #dfdfdf;
+        overflow: hidden;
+    }
+}
+
+//TODO: Remove bottom border of headers.
+.table_viewer_holder, .table_viewer_headers {
+    font: 13px/18px monospace,mono,consolas;
+    padding: 0px;
+    margin: 0px;
+    table-layout: fixed;
+    white-space: nowrap;
+    border-spacing: 0px;
+    border-collapse: collapse;
+}
+
+tr.tableviewer {
+    padding: 20px;
+    // TODO: We need to figure out the even/odd thing under scrolling.
+    &:nth-child(even) {
+        background: #fff;
+    }
+    &:nth-child(odd) {
+        background: #f9f9f9;
     }
 
     .expand, .collapse {
@@ -162,7 +187,9 @@ tr.tableviewer {
 }
 
 tr.tableviewer.attrs td {
-    border: 1px solid green;  // TODO
+    color: #444;
+    background: #f1f1f1;
+    box-shadow: inset 0 4px 4px -4px #fff;
 }
 
 

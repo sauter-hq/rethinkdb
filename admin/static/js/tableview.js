@@ -781,8 +781,7 @@ class TableViewer {
             for (let child of tr.children) {
                 let rect = child.getBoundingClientRect();
                 console.log("Child ", i, "width:", rect.width);
-                // TODO: -4?  Okay.  Get intellectual control of layout.
-                let width = (rect.width - 4);
+                let width = rect.width;
                 this.setColumnWidth(i, width);
                 i++;
             }
