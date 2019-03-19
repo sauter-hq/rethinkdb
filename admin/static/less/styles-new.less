@@ -144,23 +144,25 @@ This will also help porting if we move to another CSS preprocessor (say scss)
     margin: 1px;  // TODO
 }
 
-tr.tableviewer td {
-    border: 1px solid red;  // TODO
-    white-space: nowrap;
+tr.tableviewer {
+    td {
+        border: 1px solid red;  // TODO
+        white-space: nowrap;
+    }
+
+    .expand, .collapse {
+        float: right;
+        color: blue;
+    }
+
+    .expand:hover, .collapse:hover {
+        cursor: pointer;
+        color: red;
+    }
 }
 
 tr.tableviewer.attrs td {
     border: 1px solid green;  // TODO
-}
-
-tr.tableviewer .expand, tr.tableviewer .collapse {
-    float: right;
-    color: blue;
-}
-
-tr.tableviewer .expand:hover, tr.tableviewer .collapse:hover {
-    cursor: pointer;
-    color: red;
 }
 
 
