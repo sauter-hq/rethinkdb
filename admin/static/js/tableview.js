@@ -454,10 +454,10 @@ class TableViewer {
     static json_to_table_get_values(rows, frontOffset, flatten_attr) {
         console.log("json_to_table_get_values");
         let document_list = [];
-        for (let i in rows) {
+        for (let i = 0; i < rows.length; i++) {
             let single_result = rows[i];
             let new_document = {cells: []};
-            for (let col in flatten_attr) {
+            for (let col = 0; col < flatten_attr.length; col++) {
                 let attr_obj = flatten_attr[col];
                 let value = single_result;
                 for (let key of attr_obj.prefix) {
@@ -465,15 +465,10 @@ class TableViewer {
                 }
                 new_document.cells.push(this.makeDOMCell(value, col));
             }
-            let index = i + 1;
-            this.tag_record(new_document, frontOffset + i + 1);
+            new_document.tag = frontOffset + i + 1;
             document_list.push(new_document);
         }
         return this.helpMakeDOMRows(document_list)
-    }
-
-    static tag_record(doc, index) {
-        // TODO: Use query position to tag record.
     }
 
     static makeDOMCell(value, col) {
@@ -504,10 +499,13 @@ class TableViewer {
 
     static helpMakeDOMRows(document_list) {
         let ret = [];
-        for (let i in document_list) {
+        for (let i = 0; i < document_list.length; i++) {
+            let doc = document_list[i];
             let el = document.createElement('tr');
-            el.className = this.className;
-            for (let cell of document_list[i].cells) {
+            let even = (doc.tag & 1) === 0;
+            el.className = this.className + (even ? ' even' : ' odd');
+            el.dataset.row = doc.tag;
+            for (let cell of doc.cells) {
                 el.appendChild(cell);
             }
             ret.push(el);
@@ -781,7 +779,10 @@ class TableViewer {
             for (let child of tr.children) {
                 let rect = child.getBoundingClientRect();
                 console.log("Child ", i, "width:", rect.width);
-                let width = rect.width;
+                // TODO: Don't do border calculations -- don't re-specify column width
+                // in terms of its own value, either, you get column creep.
+                // With border-collapse I guess we have 1 border pixel.
+                let width = rect.width - 1;
                 this.setColumnWidth(i, width);
                 i++;
             }
