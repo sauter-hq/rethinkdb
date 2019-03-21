@@ -166,13 +166,16 @@ div.table_viewer {
 }
 
 tr.tableviewer {
-    padding: 20px;
     // TODO: We need to figure out the even/odd thing under scrolling.
     &.even {
         background: #fff;
     }
     &.odd {
         background: #f9f9f9;
+    }
+
+    td {
+        padding: 2px;
     }
 
     .expand, .collapse {
@@ -184,6 +187,42 @@ tr.tableviewer {
         cursor: pointer;
         color: red;
     }
+
+    .jta_undefined {
+        color: #ccc;
+    }
+    .jta_null {
+        color: red
+    }
+    .jta_bool {
+        color: #ee00ff;
+    }
+    .jta_num {
+        color: blue;
+    }
+    .jta_link {
+        text-decoration: none;
+        color: #000;
+    }
+    .jta_url {
+        color: #08c;
+    }
+    .jta_email {
+        color: #08c;
+    }
+    .jta_string {
+        color: green;
+        white-space: pre;
+    }
+    /*
+    .jta_object {
+        vertical-align: top;
+        display: inline-block;
+        .json_tree {
+            padding: 0px 17px;
+        }
+    }
+    */
 }
 
 tr.tableviewer.attrs td {

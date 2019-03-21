@@ -256,7 +256,9 @@ class TableViewer {
             structure: {},
             primitiveCount: 0,
             objectCount: 0,
-            display: 'expanded'
+            display: 'expanded',
+            // null width means unspecified, a number means it is fixed.
+            width: null,
         };
 
         this.displayedInfo = {
@@ -476,7 +478,7 @@ class TableViewer {
         let data = this.compute_data_for_type(value, col);
         let el = document.createElement('td');
         el.appendChild(document.createTextNode(data.value + ''));
-        el.className = 'col-' + col;
+        el.className = 'col-' + col + ' ' + data.classname;
         return el;
     }
 
@@ -606,6 +608,7 @@ class TableViewer {
         let ret = this.makeNewInfo();
         ret.order = [];
         ret.display = 'collapsed';
+        ret.width = null;
         return ret;
     }
 
@@ -775,16 +778,24 @@ class TableViewer {
 
         if (this.rowHolder.firstChild) {
             let tr = this.rowHolder.firstChild;
-            let i = 0;
-            for (let child of tr.children) {
-                let rect = child.getBoundingClientRect();
-                console.log("Child ", i, "width:", rect.width);
-                // TODO: Don't do border calculations -- don't re-specify column width
-                // in terms of its own value, either, you get column creep.
-                // With border-collapse I guess we have 1 border pixel.
-                let width = rect.width - 1;
+            for (let i = 0; i < tr.children.length; i++) {
+                let child = tr.children[i];
+                let attr = this.displayedInfo.attrs[i];
+                // Check if we've already specified a width -- if not, set it naturally based on the data.
+                let width = attr.columnInfo.width;
+                console.log("Column ", i, "width", width);
+                // TODO: Force a minimum width, when columns can be user-resized.
+                if (width === null) {
+                    let rect = child.getBoundingClientRect();
+                    console.log("Child ", i, "width:", rect.width);
+                    // TODO: Don't do border calculations -- don't re-specify column width
+                    // in terms of its own value, either, you get column creep.
+                    // With border-collapse I guess we have 1 border pixel.  And 2 px padding on both sides.
+                    // 1 + 2 + 2 = 5.
+                    width = rect.width - 5;
+                    attr.columnInfo.width = width;
+                }
                 this.setColumnWidth(i, width);
-                i++;
             }
         }
 
