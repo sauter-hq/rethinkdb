@@ -305,7 +305,6 @@ class TableViewer {
         console.log("middleIndex", middleIndex);
         let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
 
-        // TODO: Delete earlier rows too.
         if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
             
             console.log("Deleting rows >= index", middleIndex);
@@ -318,8 +317,8 @@ class TableViewer {
             console.log("Deleting rows < index", middleIndex);
             let toDelete = middleIndex;
             this.rows.splice(0, toDelete);
-            this.setDOMRows();
             this.frontOffset += toDelete;
+            this.setDOMRows(scrollDistance);
             console.log("incred frontOffset by ", toDelete, "to", this.frontOffset);
             // TODO: Set Padding/margin above elements for smooth scrolling.
         }
@@ -477,8 +476,12 @@ class TableViewer {
         // TODO: Implement for real.
         let data = this.compute_data_for_type(value, col);
         let el = document.createElement('td');
-        el.appendChild(document.createTextNode(data.value + ''));
-        el.className = 'col-' + col + ' ' + data.classname;
+        let inner = document.createElement('span');
+        el.appendChild(inner);
+        inner.appendChild(document.createTextNode(data.value + ''));
+        let className = 'col-' + col + ' ' + data.classname;
+        el.className = className;
+        inner.className = 'col-' + col;
         return el;
     }
 
@@ -488,13 +491,13 @@ class TableViewer {
         console.log("setColumnWidth with sheet", sheet);
         while (sheet.cssRules.length <= col) {
             let i = sheet.cssRules.length;
-            sheet.insertRule('.' + TableViewer.className + ' .col-' + i + ' { }', i);
+            sheet.insertRule('.' + TableViewer.className + ' td.col-' + i + ' { }', i);
         }
         console.log("padded out rules, deleting", col);
         sheet.deleteRule(col);
         console.log("deleted rule");
         sheet.insertRule(
-            '.' + TableViewer.className + ' .col-' + col + ' { width: ' + width + 'px; }',
+            '.' + TableViewer.className + ' td.col-' + col + ' { width: ' + width + 'px; max-width: ' + width + 'px; }',
             col);
         console.log("inserted rule");
     }
@@ -718,7 +721,9 @@ class TableViewer {
         return changed;
     }
 
-    setDOMRows() {
+    setDOMRows(scrollDistance) {
+        // TODO: Pass scrollDistance everywhere.
+        scrollDistance = scrollDistance || 0;
         console.log("setDOMRows");
 
         // TODO: We can just pass in unseen rows.
@@ -750,11 +755,19 @@ class TableViewer {
                     this.rowHolder.insertBefore(tr, insertionPoint);
                 }
             } else {
+
+
                 // We have >= 0 rows in front to delete.
                 let toDelete = Math.min(this.frontOffset - dfo, origLength);
                 for (let i = 0; i < toDelete; i++) {
                     this.rowHolder.removeChild(this.rowHolder.firstChild);
                 }
+
+                // TODO: Initialize in ctor.
+                let top = this.rowHolderTop || 0;
+                top += scrollDistance;
+                this.rowHolderTop = top;
+                this.rowHolder.style.top = top + 'px';
             }
 
             let backOffset = this.frontOffset + this.rows.length;
@@ -798,6 +811,7 @@ class TableViewer {
                 this.setColumnWidth(i, width);
             }
         }
+
 
     }
 
