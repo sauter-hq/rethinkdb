@@ -488,18 +488,14 @@ class TableViewer {
     setColumnWidth(col, width) {
         console.log("setColumnWidth", col, ", ", width);
         let sheet = this.styleNode.sheet;
-        console.log("setColumnWidth with sheet", sheet);
         while (sheet.cssRules.length <= col) {
             let i = sheet.cssRules.length;
             sheet.insertRule('.' + TableViewer.className + ' td.col-' + i + ' { }', i);
         }
-        console.log("padded out rules, deleting", col);
         sheet.deleteRule(col);
-        console.log("deleted rule");
         sheet.insertRule(
             '.' + TableViewer.className + ' td.col-' + col + ' { width: ' + width + 'px; max-width: ' + width + 'px; }',
             col);
-        console.log("inserted rule");
     }
 
     static helpMakeDOMRows(document_list) {
