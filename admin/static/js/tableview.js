@@ -367,8 +367,8 @@ class TableViewer {
         }
         this.renderedGeneration = generation;
         this.rows = rows.concat(this.rows);
-        this.setDOMRows();
         this.frontOffset -= rows.length;
+        this.setDOMRows();
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
         if (rows.length > 0) {
@@ -732,6 +732,10 @@ class TableViewer {
 
         let changed = this.applyNewAttrs(attrs);
 
+        let topAdjustment = 0;
+        let insertionElement = null;
+        let hasInsertionElement = false;
+
         if (changed) {
             // Just reconstruct all rows.
             let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs);
@@ -753,21 +757,19 @@ class TableViewer {
                 let insertionPoint = this.rowHolder.firstChild;
                 for (let tr of trs) {
                     this.rowHolder.insertBefore(tr, insertionPoint);
+                    // So insertionElement gets set to the last tr.
+                    insertionElement = tr;
+                    hasInsertionElement = true;
                 }
+                console.log("Front-inserted ", trs.length, "rows");
             } else {
-
-
                 // We have >= 0 rows in front to delete.
                 let toDelete = Math.min(this.frontOffset - dfo, origLength);
                 for (let i = 0; i < toDelete; i++) {
                     this.rowHolder.removeChild(this.rowHolder.firstChild);
                 }
 
-                // TODO: Initialize in ctor.
-                let top = this.rowHolderTop || 0;
-                top += scrollDistance;
-                this.rowHolderTop = top;
-                this.rowHolder.style.top = top + 'px';
+                topAdjustment = scrollDistance;
             }
 
             let backOffset = this.frontOffset + this.rows.length;
@@ -812,6 +814,27 @@ class TableViewer {
             }
         }
 
+        if (hasInsertionElement) {
+            let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
+            let insertedBoundingRect = insertionElement.getBoundingClientRect();
+            // This + 1 is from really precise (and fragile) border-collapse math.
+            topAdjustment = rowsBoundingRect.top - insertedBoundingRect.bottom + 1;
+            console.log("Inserted front, topAdjustment", topAdjustment,
+                "=", rowsBoundingRect, "-", insertedBoundingRect);
+        }
+
+        if (topAdjustment !== 0) {
+            // TODO: Initialize in ctor.
+            let top = this.rowHolderTop || 0;
+            top += topAdjustment;
+            if (top < 0) {
+                // Possible if the data or row heights changes.
+                console.log("Negative top clamped:", top);
+                top = 0;
+            }
+            this.rowHolderTop = top;
+            this.rowHolder.style.top = top + 'px';
+        }
 
     }
 
