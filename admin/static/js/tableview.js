@@ -795,7 +795,6 @@ class TableViewer {
                 // Check if we've already specified a width -- if not, set it naturally based on the data.
                 let width = attr.columnInfo.width;
                 console.log("Column ", i, "width", width);
-                // TODO: Force a minimum width, when columns can be user-resized.
                 if (width === null) {
                     let rect = child.getBoundingClientRect();
                     console.log("Child ", i, "width:", rect.width);
@@ -804,6 +803,8 @@ class TableViewer {
                     // With border-collapse I guess we have 1 border pixel.  And 2 px padding on both sides.
                     // 1 + 2 + 2 = 5.
                     width = rect.width - 5;
+                    const min_width = 100;
+                    width = Math.max(min_width, width);
                     attr.columnInfo.width = width;
                 }
                 this.setColumnWidth(i, width);
@@ -823,9 +824,9 @@ class TableViewer {
             // TODO: Initialize in ctor.
             let top = this.rowHolderTop || 0;
             top += topAdjustment;
-            if (top < 0) {
+            if (top < 0 || this.frontOffset === 0) {
                 // Possible if the data or row heights changes.
-                console.log("Negative top clamped:", top);
+                console.log("Top clamped:", top);
                 top = 0;
             }
             this.rowHolderTop = top;
