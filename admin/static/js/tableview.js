@@ -264,6 +264,7 @@ class TableViewer {
         this.displayedInfo = {
             displayedFrontOffset: 0,
             attrs: [],
+            rowHolderTop: 0,
         };
 
         // General structure:
@@ -838,15 +839,14 @@ class TableViewer {
         }
 
         if (topAdjustment !== 0) {
-            // TODO: Initialize in ctor.
-            let top = this.rowHolderTop || 0;
+            let top = this.displaydInfo.rowHolderTop;
             top += topAdjustment;
             if (top < 0 || this.frontOffset === 0) {
                 // Possible if the data or row heights changes.
                 console.log("Top clamped:", top);
                 top = 0;
             }
-            this.rowHolderTop = top;
+            this.displayedInfo.rowHolderTop = top;
             this.rowHolder.style.top = top + 'px';
         }
 
