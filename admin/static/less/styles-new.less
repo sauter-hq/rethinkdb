@@ -139,11 +139,6 @@ This will also help porting if we move to another CSS preprocessor (say scss)
     overflow: auto;
 }
 
-.table_viewer_row {
-    border: 1px solid blue;  // TODO
-    margin: 1px;  // TODO
-}
-
 div.table_viewer {
     td {
         max-width: 310px;
@@ -167,6 +162,10 @@ div.table_viewer {
 
 .table_viewer_holder {
     position: relative;
+
+    tr:first-child td {
+        border-top: 0;
+    }
 }
 
 tr.tableviewer {
