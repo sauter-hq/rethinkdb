@@ -277,8 +277,8 @@ class TableViewer {
 
     fetchForUpdate() {
         // TODO: Use const where appropriate.
-        const preload_ratio = 0.5;  // TODO: What number?
-        const overscroll_ratio = 1.5;  // TODO: A bigger number.
+        const preload_ratio = 3;  // TODO: What number?  Adapt to latency?
+        const overscroll_ratio = 4;
         console.log("TableViewer redraw", ++this.numRedraws);
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
