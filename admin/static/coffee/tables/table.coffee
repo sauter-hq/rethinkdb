@@ -422,7 +422,7 @@ class TableMainView extends Backbone.View
         # TODO: Put the table viewer in a nice looking panel.
         # TODO: [0]?
         @table_viewer = new TableViewer(@$('.table_viewer')[0], @rowSource);
-        @table_viewer.redraw();
+        @table_viewer.fetchForUpdate();
 
         @
 

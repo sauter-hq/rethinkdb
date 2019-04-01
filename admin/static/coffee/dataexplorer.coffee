@@ -3089,7 +3089,7 @@ class TableViewerView extends ResultView
         super args
 
     render: =>
-        @table_viewer.redraw()
+        @table_viewer.fetchforUpdate()
         @
 
     add_row: (row, noflash) =>

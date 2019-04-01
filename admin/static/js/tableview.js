@@ -247,7 +247,7 @@ class TableViewer {
         this.rowHolder.className = 'table_viewer_holder';
         this.rowScroller.appendChild(this.rowHolder);
 
-        this.rowScroller.onscroll = event => this.redraw();
+        this.rowScroller.onscroll = event => this.fetchForUpdate();
 
         this.columnInfo = {
             // holds {columnName: string, display:, ...}
@@ -274,10 +274,10 @@ class TableViewer {
         // But columnHeaders is absent right now.  (And no rows have been loaded either.)
     }
 
-    // TODO: Rename to "update" -- this doesn't redraw per se.
-    redraw() {
-        let preload_ratio = 0.5;  // TODO: What number?
-        let overscroll_ratio = 1.5;  // TODO: A bigger number.
+    fetchForUpdate() {
+        // TODO: Use const where appropriate.
+        const preload_ratio = 0.5;  // TODO: What number?
+        const overscroll_ratio = 1.5;  // TODO: A bigger number.
         console.log("TableViewer redraw", ++this.numRedraws);
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
@@ -320,7 +320,6 @@ class TableViewer {
             this.frontOffset += toDelete;
             this.setDOMRows(scrollDistance);
             console.log("incred frontOffset by ", toDelete, "to", this.frontOffset);
-            // TODO: Set Padding/margin above elements for smooth scrolling.
         }
 
         // TODO: Well, we don't really use generation, do we.
@@ -342,7 +341,7 @@ class TableViewer {
 
     appendedSource() {
         this.underflow = false;
-        // this.redraw();
+        // this.fetchForUpdate();
     }
 
     cleanup() {
@@ -372,7 +371,7 @@ class TableViewer {
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw());
+            setTimeout(() => this.fetchForUpdate());
         }
     }
 
@@ -401,7 +400,7 @@ class TableViewer {
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
         if (rows.length > 0) {
-            setTimeout(() => this.redraw());
+            setTimeout(() => this.fetchForUpdate());
         }
     }
 
@@ -726,13 +725,34 @@ class TableViewer {
         TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, this.rows);
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
 
-        let changed = this.applyNewAttrs(attrs);
+        const attrsChanged = this.applyNewAttrs(attrs);
+
+
+        const dfo = this.displayedInfo.displayedFrontOffset;
+        const origLength = this.rowHolder.children.length;
+        const backOffset = this.frontOffset + this.rows.length;
+        const origBackOffset = dfo + origLength;
+
+
+        // Find an existing row that is displayed and will continue to be displayed.
+        let observedRowOffset = null;
+        let observedPosition = null;
+        {
+            const commonFO = Math.max(this.frontOffset, dfo);
+            const commonBO = Math.min(backOffset, origBackOffset);
+            if (commonFO < commonBO) {
+                observedRowOffset = commonFO;
+                let tr = this.rowHolder.children[observedRowOffset - dfo];
+                observedPosition = tr.getBoundingClientRect().top;
+            }
+        }
+
 
         let topAdjustment = 0;
         let insertionElement = null;
         let hasInsertionElement = false;
 
-        if (changed) {
+        if (attrsChanged) {
             // Just reconstruct all rows.
             let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs);
 
@@ -743,8 +763,7 @@ class TableViewer {
                 this.rowHolder.appendChild(tr);
             }
         } else {
-            let dfo = this.displayedInfo.displayedFrontOffset;
-            let origLength = this.rowHolder.children.length;
+
             // Columns are the same, see if we can incrementally update rows.
             if (this.frontOffset < dfo) {
                 // We have rows in front to add.
@@ -768,8 +787,6 @@ class TableViewer {
                 topAdjustment = scrollDistance;
             }
 
-            let backOffset = this.frontOffset + this.rows.length;
-            let origBackOffset = dfo + origLength;
             if (backOffset <= origBackOffset) {
                 // We have rows on the end to delete.
                 let toDelete = Math.min(this.rowHolder.children.length, origBackOffset - backOffset);
@@ -832,6 +849,19 @@ class TableViewer {
             this.rowHolderTop = top;
             this.rowHolder.style.top = top + 'px';
         }
+
+
+        let finalAdjustment;
+        if (observedRowOffset !== null) {
+            const elt = this.rowHolder.children[observedRowOffset - this.frontOffset];
+            finalAdjustment = elt.getBoundingClientRect().top - observedPosition;
+        } else if (this.rowHolder.children.length > 0) {
+            // TODO: Ensure empty children case is handled appropriately.
+            const elt = this.rowHolder.firstChild;
+            finalAdjustment = elt.getBoundingClientRect().top - this.rowScroller.getBoundingClientRect().top;
+        }
+
+        this.rowScroller.scrollBy(0, finalAdjustment);
 
     }
 
