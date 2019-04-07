@@ -807,6 +807,9 @@ class TableViewer {
 
         if (this.rowHolder.firstChild) {
             let tr = this.rowHolder.firstChild;
+            // We have one unaccounted for border pixel.  (Total width is 1 +
+            // sum of (column widths + 5).)
+            let sumWidth = 1;
             for (let i = 0; i < tr.children.length; i++) {
                 let child = tr.children[i];
                 let attr = this.displayedInfo.attrs[i];
@@ -827,6 +830,8 @@ class TableViewer {
                 }
                 this.setColumnWidth(i, width);
             }
+            this.rowHolder.style.width = sumWidth + "px";
+            this.columnHeaders.style.width = sumWidth + "px";
         }
 
         if (hasInsertionElement) {
