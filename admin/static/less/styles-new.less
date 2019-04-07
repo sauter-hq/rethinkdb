@@ -149,7 +149,6 @@ div.table_viewer {
     }
 }
 
-//TODO: Remove bottom border of headers.
 .table_viewer_holder, .table_viewer_headers {
     font: 13px/18px monospace,mono,consolas;
     padding: 0px;
@@ -158,6 +157,12 @@ div.table_viewer {
     white-space: nowrap;
     border-spacing: 0px;
     border-collapse: collapse;
+}
+
+.table_viewer_headers {
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 .table_viewer_holder {

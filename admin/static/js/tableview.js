@@ -235,13 +235,13 @@ class TableViewer {
         this.styleNode = styleNode;
         el.appendChild(styleNode);
 
-        this.columnHeaders = document.createElement('table');
-        this.columnHeaders.className = TableViewer.className + ' table_viewer_headers';
-        el.appendChild(this.columnHeaders);
-
         this.rowScroller = document.createElement('div');
         this.rowScroller.className = TableViewer.className + ' table_viewer_scroller';
         el.appendChild(this.rowScroller);
+
+        this.columnHeaders = document.createElement('table');
+        this.columnHeaders.className = TableViewer.className + ' table_viewer_headers';
+        this.rowScroller.appendChild(this.columnHeaders);
 
         this.rowHolder = document.createElement('table');
         this.rowHolder.className = 'table_viewer_holder';
@@ -839,7 +839,7 @@ class TableViewer {
         }
 
         if (topAdjustment !== 0) {
-            let top = this.displaydInfo.rowHolderTop;
+            let top = this.displayedInfo.rowHolderTop;
             top += topAdjustment;
             if (top < 0 || this.frontOffset === 0) {
                 // Possible if the data or row heights changes.
