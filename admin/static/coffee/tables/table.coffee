@@ -380,7 +380,7 @@ class TableMainView extends Backbone.View
             type: 'table'
         )
 
-        @rowSource = new TableRowSource(r, driver, @model.get('id'))
+        @rowSpec = new RealTableSpec(r, driver, @model.get('id'))
 
     set_indexes: (indexes) =>
         if not @indexes?
@@ -421,7 +421,7 @@ class TableMainView extends Backbone.View
 
         # TODO: Put the table viewer in a nice looking panel.
         # TODO: [0]?
-        @table_viewer = new TableViewer(@$('.table_viewer')[0], @rowSource);
+        @table_viewer = new TableViewer(@$('.table_viewer')[0], @rowSpec);
         @table_viewer.fetchForUpdate();
 
         @

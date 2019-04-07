@@ -173,24 +173,46 @@ div.table_viewer {
     }
 }
 
-tr.tableviewer {
-    // TODO: We need to figure out the even/odd thing under scrolling.
+.table_viewer_holder tr {
     &.even {
         background: #fff;
     }
     &.odd {
         background: #f9f9f9;
     }
-
+    
     td {
         padding: 2px;
         text-overflow: ellipsis;
     }
+}
 
+.table_viewer_headers tr {
     .expand, .collapse {
         float: right;
         color: blue;
     }
+
+    td {
+        padding: 0 4px 0 0;
+    }
+
+    td div.value {
+        margin: 0;
+        padding: 2px 0 2px 2px;
+        text-overflow: ellipsis;
+    }
+
+    td:hover {
+        cursor: e-resize;
+    }
+
+    td div.value:hover {
+        cursor: auto;
+    }
+}
+
+tr.tableviewer {
 
     .expand:hover, .collapse:hover {
         cursor: pointer;

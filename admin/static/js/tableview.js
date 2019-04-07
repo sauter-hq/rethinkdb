@@ -12,10 +12,11 @@
 
 
 class TableRowSource {
-    constructor(r, driver, tableId) {
+    constructor(r, driver, tableId, orderSpec) {
         this.r  = r;
         this.driver = driver;
         this.tableId = tableId;
+        this.orderSpec = orderSpec;
 
         this.cachedRows = [];
         this.cachedRowsIsEnd = false;
@@ -45,21 +46,36 @@ class TableRowSource {
         );
     }
 
+    static unfurl(row, path) {
+        let q = row;
+        for (let key of path) {
+            q = q(key);
+        }
+        return q.default(null);
+    }
+
+    static access(obj, path) {
+        for (let key of path) {
+            obj = obj && obj[key];
+        }
+        return obj;
+    }
+
     getRowsFrom(startIndex) {
         console.log("getRowsFrom", startIndex);
         let r = this.r;
-        let query_limit = 30;  // TODO: no
+        let query_limit = 300;  // TODO: no
         let endOffset = this.cachedRowsOffset + this.cachedRows.length;
         if (startIndex < endOffset) {
             let ix = startIndex - this.cachedRowsOffset;
-            // TODO: Don't return _all_ the rows, just... 30.
+            // TODO: Don't return _all_ the rows, just... 300.
             return Promise.resolve(
                 {rows: this.cachedRows.slice(ix, Math.min(this.cachedRows.length, ix + query_limit)),
                  isEnd: this.cachedRowsIsEnd}
             );
         }
         if (startIndex > endOffset) {
-            return Promise.reject("getRowsFrom past the end (" + startIndex + ">" + endOffset + ") len = " 
+            return Promise.reject("getRowsFrom past the end (" + startIndex + ">" + endOffset + ") len = "
                 + this.cachedRows.length + ", offset = " + this.cachedRowsOffset);
         }
 
@@ -71,14 +87,27 @@ class TableRowSource {
         });
 
         if (needsQuery) {
-            let primary_key = this.primaryKey;
+            let orderingKey = this.orderSpec.colPath;
+
             let rightKey = this.cachedRows.length === 0 ? r.minval :
-                this.cachedRows[this.cachedRows.length - 1][primary_key];
+                TableRowSource.access(this.cachedRows[this.cachedRows.length - 1], orderingKey);
 
             console.log("Querying between", rightKey, "with limit", query_limit);
-            let q = this.query((table, table_config) => 
-                table.between(rightKey, r.maxval, {leftBound: 'open'})
-                    .orderBy(primary_key, {index: primary_key}).limit(query_limit));
+            let q;
+            if (orderingKey.length === 1 && orderingKey[0] === this.primaryKey) {
+                q = this.query((table, table_config) =>
+                    table.between(rightKey, r.maxval, {leftBound: 'open'})
+                        .orderBy({index: (this.orderSpec.desc ? r.desc : r.asc)(this.primaryKey)})
+                        .limit(query_limit));
+            } else {
+                // TODO: Cache the cursor and set block size instead of filtering.
+                // TODO: The keys are not unique, so we don't get a correct distinct ordering.
+                // Use primary key as second column ordering.
+                q = this.query((table, table_config) =>
+                    table.filter(x => TableRowSource.unfurl(x, orderingKey).gt(rightKey))
+                        .orderBy((this.orderSpec.desc ? r.desc : r.asc)(x => TableRowSource.unfurl(x, orderingKey)))
+                        .limit(query_limit));
+            }
 
             this.driver.run_once(q, (err, results) => {
                 if (err) {
@@ -129,13 +158,33 @@ class TableRowSource {
             return Promise.reject("getRowsBefore called with too-big endIndex");
         }
 
-        let query_limit = 30;  // TODO: no
+        let query_limit = 300;  // TODO: no
         let value = this.cachedRows.slice(Math.max(endIndex - query_limit, 0), endIndex);
         return Promise.resolve(value);
     }
 
     cancelPendingRequests() {
         // TODO: Make sure this is implemented.
+    }
+}
+
+class RealTableSpec {
+    constructor(r, driver, tableId) {
+        this.r = r;
+        this.driver = driver;
+        this.tableId = tableId;
+    }
+
+    primaryRowSource() {
+        return new TableRowSource(this.r, this.driver, this.tableId, {
+            colPath: ['id'],  // TODO: Hard-coded
+            desc: false,
+        });
+    }
+
+    // {colPath: [string], desc: bool}
+    columnRowSource(orderSpec) {
+        return new TableRowSource(this.r, this.driver, this.tableId, orderSpec);
     }
 }
 
@@ -208,10 +257,11 @@ class QueryRowSource {
 
 class TableViewer {
     // el should be a div.
-    constructor(el, rowSource) {
+    constructor(el, tableSpec) {
         console.log("Constructing TableViewer with el ", el);
         this.el = el;
-        this.rowSource = rowSource;
+        this.tableSpec = tableSpec;
+        this.rowSource = tableSpec.primaryRowSource();
         // Set to true when the end of the data is reached and present in the DOM.
         this.underflow = false;
         this.frontOffset = 0;
@@ -229,6 +279,15 @@ class TableViewer {
         while (el.firstChild) {
             el.removeChild(el.firstChild);
         }
+
+        el.onmousemove = (event) => { this.elMouseMove(event); }
+        el.onmouseleave = (event) => {
+            // TODO: This is broken.
+            if (event.target === el) {
+                this.elEndDrag(event);
+            }
+        };
+        el.onmouseup = (event) => { this.elEndDrag(event); }
 
         let styleNode = document.createElement('style');
         styleNode.type = "text/css";
@@ -265,6 +324,9 @@ class TableViewer {
             displayedFrontOffset: 0,
             attrs: [],
             rowHolderTop: 0,
+            dragging: null,
+            initialRender: true,
+            orderSpec: {colPath: ['id'] /* TODO: Hard-coded */, desc: false},
         };
 
         // General structure:
@@ -294,10 +356,9 @@ class TableViewer {
             return;
         }
 
-        let scrollTop = this.rowScroller.scrollTop;
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = !this.waitingAbove && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
+        let loadPreceding = !this.waitingAbove && this.frontOffset > 0 && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
         let loadSubsequent = !this.waitingBelow &&
             rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
 
@@ -307,11 +368,11 @@ class TableViewer {
         let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
 
         if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
-            
+
             console.log("Deleting rows >= index", middleIndex);
             let toDelete = this.rowHolder.children.length - middleIndex;
             this.rows.splice(this.rows.length - toDelete, toDelete);
-            this.setDOMRows();
+            this.setDOMRows(0);
             this.underflow = false;
         } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
             let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
@@ -332,6 +393,7 @@ class TableViewer {
                 rows => this._supplyRowsBefore(generation, rows));
         }
         if (loadSubsequent) {
+            // TODO: We need some kind of loading bar when we get to the bottom.
             console.log("loadSubsequent, length ", this.rowHolder.children.length, "frontOffset", this.frontOffset);
             this.waitingBelow = true;
             // TODO: Grotesque rowHolder.children.length
@@ -347,6 +409,9 @@ class TableViewer {
 
     cleanup() {
         this.rowSource.cancelPendingRequests();
+        while (this.el.firstChild) {
+            this.el.removeChild(this.el.firstChild);
+        }
     }
 
     _supplyRowsBefore(generation, rows) {
@@ -354,11 +419,11 @@ class TableViewer {
             console.log("_supplyRowsBefore while not waitingAbove");
             return;
         }
-        this.waitingAbove = false;
         if (generation < this.renderedGeneration) {
             console.log("Ancient request from previous generation ignored");
             return;
         }
+        this.waitingAbove = false;
         console.log("Supplying rows before", rows);
         if (generation > this.renderedGeneration) {
             console.log("wiping");
@@ -368,7 +433,7 @@ class TableViewer {
         this.renderedGeneration = generation;
         this.rows = rows.concat(this.rows);
         this.frontOffset -= rows.length;
-        this.setDOMRows();
+        this.setDOMRows(0);
         console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
         // We might need to load more rows.
         if (rows.length > 0) {
@@ -382,13 +447,14 @@ class TableViewer {
             console.log("_supplyRows while not waitingBelow");
             return;
         }
-        this.waitingBelow = false;
         if (generation < this.renderedGeneration) {
             console.log("Ancient request from previous generation ignored");
             return;
         }
+        this.waitingBelow = false;
         console.log("Supplying rows", rows);
         if (generation > this.renderedGeneration) {
+            console.log("wiping ii");
             this.rows = [];
         }
         this.renderedGeneration = generation;
@@ -396,7 +462,7 @@ class TableViewer {
         for (let row of rows) {
             this.rows.push(row);
         }
-        this.setDOMRows();
+        this.setDOMRows(0);
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
@@ -412,14 +478,116 @@ class TableViewer {
 
     static get className() { return 'tableviewer'; }
 
+    elMouseMove(event) {
+        let dragging = this.displayedInfo.dragging;
+        if (dragging === null) {
+            return;
+        }
+        if (event.buttons !== 1) {
+            console.log("mousemove without buttons");
+            this.doEndDrag();
+            return;
+        }
+        let displacement = event.clientX - dragging.initialClientX;
+        let columnInfo = this.displayedInfo.attrs[dragging.column].columnInfo;
+        const min_width = 20;  // TODO: Decide on constant.
+        let oldWidth = columnInfo.width;
+        let newWidth = Math.max(min_width, dragging.initialWidth + displacement);
+        columnInfo.width = newWidth;
+        if (oldWidth !== columnInfo.width) {
+            this.setColumnWidth(dragging.column, newWidth)
+        }
+    }
+
+    elEndDrag(event) {
+        if (this.displayedInfo.dragging === null) {
+            return;
+        }
+        console.log("Ending drag with event ", event);
+        this.doEndDrag();
+    }
+
+    doEndDrag() {
+        this.displayedInfo.dragging = null;
+    }
+
+    static equalPrefix(p, q) {
+        if (p.length !== q.length) {
+            return false;
+        }
+        for (let i = 0; i < p.length; i++) {
+            if (p[i] !== q[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     json_to_table_get_attr(flatten_attr) {
         let tr = document.createElement('tr');
         tr.className = TableViewer.className + ' attrs';
         for (let col in flatten_attr) {
             let attr_obj = flatten_attr[col];
             console.log("Column attr: ", attr_obj);
-            let el = document.createElement('td');
-            el.className = 'col-' + col;
+            let tdEl = document.createElement('td');
+            tdEl.className = 'col-' + col;
+
+            // TODO: Return value on every onclick.
+
+            let colId = col;
+            tdEl.onmousedown = (event) => {
+                if (event.target !== tdEl) {
+                    // This is for mouse-downs in the resizing area.
+                    return;
+                }
+                console.log("Got onclick event exclusively for tdEl #", colId);
+                this.displayedInfo.dragging = {
+                    column: colId,
+                    initialClientX: event.clientX,
+                    initialWidth: this.displayedInfo.attrs[colId].columnInfo.width || 100,  // TODO: define constant
+                };
+                return false;
+            };
+            tdEl.ondblclick = (event) => {
+                if (event.target === tdEl) {
+                    // This is for double-clicks outside the resizing area.
+                    return;
+                }
+                console.log("Double clicked", colId);
+
+                this.doEndDrag();  // TODO: idk
+
+                let prefix = this.displayedInfo.attrs[colId].prefix;
+                if (TableViewer.equalPrefix(prefix, this.displayedInfo.orderSpec.colPath)) {
+                    this.displayedInfo.orderSpec = {
+                        colPath: this.displayedInfo.orderSpec.colPath,
+                        desc: !this.displayedInfo.orderSpec.desc,
+                    };
+                } else {
+                    this.displayedInfo.orderSpec = {colPath: prefix, desc: false};
+                }
+
+                this.displayedInfo.initialRender = true;
+                this.displayedInfo.rowHolderTop = 0;
+                while (this.rowHolder.firstChild) {
+                    this.rowHolder.removeChild(this.rowHolder.firstChild);
+                }
+                this.frontOffset = 0;
+                this.rows = [];
+                this.underflow = false;
+                // TODO: We might have pending supplyRows actions -- we need to use generation
+                // number to ignore them.
+                this.waitingBelow = false;
+                this.waitingAbove = false;
+                this.rowHolder.style.top = '0';
+                this.rowSource = this.tableSpec.columnRowSource(this.displayedInfo.orderSpec);
+                this.rowScroller.scrollTo(this.rowScroller.scrollLeft, 0);
+                this.fetchForUpdate();
+            };
+
+            let el = document.createElement('div');
+            el.className = 'value';
+            tdEl.appendChild(el);
 
             if (attr_obj.columnInfo.objectCount > 0) {
                 if (attr_obj.columnInfo.display === 'collapsed') {
@@ -428,7 +596,7 @@ class TableViewer {
                     arrowNode.className = 'expand';
                     arrowNode.onclick = (event) => {
                         attr_obj.columnInfo.display = 'expanded';
-                        this.setDOMRows();
+                        this.setDOMRows(0);
                     };
                     el.appendChild(arrowNode);
                 } else if (attr_obj.columnInfo.display === 'expanded') {
@@ -437,7 +605,7 @@ class TableViewer {
                     arrowNode.className = 'collapse';
                     arrowNode.onclick = (event) => {
                         attr_obj.columnInfo.display = 'collapsed';
-                        this.setDOMRows();
+                        this.setDOMRows(0);
                     };
                     el.appendChild(arrowNode);
                 }
@@ -447,7 +615,7 @@ class TableViewer {
             el.appendChild(document.createTextNode(text));
 
 
-            tr.appendChild(el);
+            tr.appendChild(tdEl);
         }
         return tr;
     }
@@ -568,7 +736,7 @@ class TableViewer {
         return data;
     }
 
-    /* 
+    /*
         this.columnInfo = {
             // holds {columnName: string, width: number}
             order: [],
@@ -602,7 +770,7 @@ class TableViewer {
             objectCount: 0
         };
     }
-    
+
     static makeColumnInfo() {
         let ret = this.makeNewInfo();
         ret.order = [];
@@ -718,8 +886,6 @@ class TableViewer {
     }
 
     setDOMRows(scrollDistance) {
-        // TODO: Pass scrollDistance everywhere.
-        scrollDistance = scrollDistance || 0;
         console.log("setDOMRows");
 
         // TODO: We can just pass in unseen rows.
@@ -860,14 +1026,14 @@ class TableViewer {
         if (observedRowOffset !== null) {
             const elt = this.rowHolder.children[observedRowOffset - this.frontOffset];
             finalAdjustment = elt.getBoundingClientRect().top - observedPosition;
-        } else if (this.rowHolder.children.length > 0) {
+        } else if (this.rowHolder.children.length > 0 && !this.displayedInfo.initialRender) {
             // TODO: Ensure empty children case is handled appropriately.
             const elt = this.rowHolder.firstChild;
             finalAdjustment = elt.getBoundingClientRect().top - this.rowScroller.getBoundingClientRect().top;
         }
 
         this.rowScroller.scrollBy(0, finalAdjustment);
-
+        this.displayedInfo.initialRender = false;
     }
 
 
