@@ -61,6 +61,12 @@ class TableRowSource {
         return obj;
     }
 
+    helpSeek(value) {
+        // For now give a phony answer.
+        // TODO: Don't give a phony answer.
+        return Promise.resolve({offset: 250, count: 2});
+    }
+
     getRowsFrom(startIndex) {
         console.log("getRowsFrom", startIndex);
         let r = this.r;
@@ -75,7 +81,8 @@ class TableRowSource {
             );
         }
         if (startIndex > endOffset) {
-            return Promise.reject("getRowsFrom past the end (" + startIndex + ">" + endOffset + ") len = "
+            // TODO: No need to log when called from a seek... for the current hacky seek.
+            console.log("getRowsFrom past the end (" + startIndex + ">" + endOffset + ") len = "
                 + this.cachedRows.length + ", offset = " + this.cachedRowsOffset);
         }
 
@@ -92,13 +99,15 @@ class TableRowSource {
             let rightKey = this.cachedRows.length === 0 ? r.minval :
                 TableRowSource.access(this.cachedRows[this.cachedRows.length - 1], orderingKey);
 
-            console.log("Querying between", rightKey, "with limit", query_limit);
+            let realLimit = startIndex - endOffset + query_limit;
+
+            console.log("Querying between", rightKey, "with limit", realLimit);
             let q;
             if (orderingKey.length === 1 && orderingKey[0] === this.primaryKey) {
                 q = this.query((table, table_config) =>
                     table.between(rightKey, r.maxval, {leftBound: 'open'})
                         .orderBy({index: (this.orderSpec.desc ? r.desc : r.asc)(this.primaryKey)})
-                        .limit(query_limit));
+                        .limit(realLimit));
             } else {
                 // TODO: Cache the cursor and set block size instead of filtering.
                 // TODO: The keys are not unique, so we don't get a correct distinct ordering.
@@ -106,7 +115,7 @@ class TableRowSource {
                 q = this.query((table, table_config) =>
                     table.filter(x => TableRowSource.unfurl(x, orderingKey).gt(rightKey))
                         .orderBy((this.orderSpec.desc ? r.desc : r.asc)(x => TableRowSource.unfurl(x, orderingKey)))
-                        .limit(query_limit));
+                        .limit(realLimit));
             }
 
             this.driver.run_once(q, (err, results) => {
@@ -129,7 +138,7 @@ class TableRowSource {
                         for (let result of results) {
                             this.cachedRows.push(result);
                         }
-                        let isEnd = results.length < query_limit;
+                        let isEnd = results.length < realLimit;
                         this.cachedRows.isEnd = isEnd;
                         for (let cb of cbs) {
                             console.log("calling cb with results", results);
@@ -227,6 +236,12 @@ class TableViewer {
         styleNode.type = "text/css";
         this.styleNode = styleNode;
         el.appendChild(styleNode);
+
+        this.seekNodeObj = TableViewer.createSeekNode();
+        el.appendChild(this.seekNodeObj.div);
+        this.seekNodeObj.form.onsubmit = (event) => {
+            this.seek(this.seekNodeObj.input.value);
+        };
 
         this.rowScroller = document.createElement('div');
         this.rowScroller.className = TableViewer.className + ' table_viewer_scroller';
@@ -333,6 +348,51 @@ class TableViewer {
             // TODO: Grotesque rowHolder.children.length
             let rowsAfter = this.rowSource.getRowsFrom(this.frontOffset + this.rowHolder.children.length).then(
                 res => this._supplyRows(generation, res));
+        }
+    }
+
+    static createSeekNode() {
+        let div = document.createElement('div');
+        div.className = TableViewer.className + ' upper_forms';
+        let form = document.createElement('form');
+        form.appendChild(document.createTextNode('Seek: '));
+        let input = document.createElement('input');
+        input.setAttribute('type', 'text');
+        input.setAttribute('placeholder', 'key');
+        input.className = document.createElement('seek-box');
+        form.appendChild(input);
+        div.appendChild(form);
+        return {div, form, input};
+    }
+
+    seek(value) {
+        let parsed;
+        let success = false;
+        try {
+            // TODO: Handle SyntaxError.
+            parsed = JSON.parse(value);
+            success = true;
+        } catch (error) {
+            // TODO: Show in UI by some means.
+            if (error instanceof SyntaxError) {
+                console.log("SyntaxError");
+            } else {
+                throw error;
+            }
+        }
+        if (success) {
+            // TODO: Generations, etc.
+            this.rowSource.helpSeek(parsed).then((res) => {
+                let {offset, count} = res;
+                this.waitingBelow = true;
+                this.rows = [];
+                this.frontOffset = offset;
+                let generation = ++this.queryGeneration;
+                this.rowSource.getRowsFrom(offset).then(rows => {
+                    this._supplyRows(generation, rows);
+                });
+                console.log("Seek not implemented: ", res);
+            });
         }
     }
 
