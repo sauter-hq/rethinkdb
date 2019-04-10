@@ -276,14 +276,10 @@ class TableViewer {
             dragging: null,
             initialRender: true,
             orderSpec: {colPath: ['id'] /* TODO: Hard-coded */, desc: false},
+            highlightStart: 0,
+            highlightCount: 0,
         };
 
-        // General structure:
-        // <div "el">
-        //   <div "columnHeaders"></div>
-        //   <div "rowScroller"><div "rowHolder">rows...</div></div>
-        // </div>
-        // But columnHeaders is absent right now.  (And no rows have been loaded either.)
     }
 
     fetchForUpdate() {
@@ -389,9 +385,10 @@ class TableViewer {
                 this.frontOffset = offset;
                 let generation = ++this.queryGeneration;
                 this.rowSource.getRowsFrom(offset).then(rows => {
+                    this.displayedInfo.highlightStart = offset;
+                    this.displayedInfo.highlightCount = count;
                     this._supplyRows(generation, rows, {seek: offset, seekCount: count});
                 });
-                console.log("Seek not implemented: ", res);
             });
         }
     }
@@ -614,7 +611,7 @@ class TableViewer {
         return tr;
     }
 
-    static json_to_table_get_values(rows, frontOffset, flatten_attr) {
+    static json_to_table_get_values(rows, frontOffset, flatten_attr, highlightStart, highlightCount) {
         console.log("json_to_table_get_values");
         let document_list = [];
         for (let i = 0; i < rows.length; i++) {
@@ -628,10 +625,10 @@ class TableViewer {
                 }
                 new_document.cells.push(this.makeDOMCell(value, col));
             }
-            new_document.tag = frontOffset + i + 1;
+            new_document.tag = frontOffset + i;
             document_list.push(new_document);
         }
-        return this.helpMakeDOMRows(document_list)
+        return this.helpMakeDOMRows(document_list, highlightStart, highlightCount);
     }
 
     static makeDOMCell(value, col) {
@@ -660,13 +657,15 @@ class TableViewer {
             col);
     }
 
-    static helpMakeDOMRows(document_list) {
+    static helpMakeDOMRows(document_list, highlightStart, highlightCount) {
         let ret = [];
+        let highlightEnd = highlightStart + highlightCount;
         for (let i = 0; i < document_list.length; i++) {
             let doc = document_list[i];
             let el = document.createElement('tr');
             let even = (doc.tag & 1) === 0;
-            el.className = this.className + (even ? ' even' : ' odd');
+            el.className = this.className + (even ? ' even' : ' odd') +
+                (doc.tag >= highlightStart && doc.tag < highlightEnd ? ' seeked' : '');
             el.dataset.row = doc.tag;
             for (let cell of doc.cells) {
                 el.appendChild(cell);
@@ -879,6 +878,7 @@ class TableViewer {
         return changed;
     }
 
+    // TODO: Rename opts to seekOpts.
     setDOMRows(scrollDistance, opts) {
         console.log("setDOMRows");
 
@@ -913,9 +913,10 @@ class TableViewer {
         let insertionElement = null;
         let hasInsertionElement = false;
 
-        if (attrsChanged) {
+        if (attrsChanged || opts) {
             // Just reconstruct all rows.
-            let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs);
+            let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs,
+                this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
 
             while (this.rowHolder.firstChild) {
                 this.rowHolder.removeChild(this.rowHolder.firstChild);
@@ -929,7 +930,8 @@ class TableViewer {
             if (this.frontOffset < dfo) {
                 // We have rows in front to add.
                 let trs = TableViewer.json_to_table_get_values(this.rows.slice(0, dfo - this.frontOffset),
-                    this.frontOffset, attrs);
+                    this.frontOffset, attrs,
+                    this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
                 let insertionPoint = this.rowHolder.firstChild;
                 for (let tr of trs) {
                     this.rowHolder.insertBefore(tr, insertionPoint);
@@ -957,7 +959,8 @@ class TableViewer {
             } else {
                 // We have rows on the end to add.
                 let toAdd = backOffset - origBackOffset;
-                let trs = TableViewer.json_to_table_get_values(this.rows.slice(-toAdd), backOffset - toAdd, attrs);
+                let trs = TableViewer.json_to_table_get_values(this.rows.slice(-toAdd), backOffset - toAdd, attrs,
+                    this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
                 for (let tr of trs) {
                     this.rowHolder.appendChild(tr);
                 }
@@ -1034,18 +1037,6 @@ class TableViewer {
                     // Show the previous row a bit, so the user knows they're at the upper bound of
                     // the matching rows via the highlighting.
                     finalAdjustment -= breathingRoom;
-                }
-
-                // Also, highlight the elements.
-                // TODO: Unhighlight previously highlighted elements.
-                // (This is no good -- we want the elements to stay highlighted even after removed
-                // and reloaded -- the display state needs seeked state.)
-                for (let i = 0; i < opts.seekCount; i++) {
-                    let j = opts.seek + i - this.frontOffset;
-                    if (j >= this.rowHolder.children.length) {
-                        break;
-                    }
-                    this.rowHolder.children[j].className += ' seeked';
                 }
 
             } else {
