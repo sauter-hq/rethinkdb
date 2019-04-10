@@ -389,7 +389,7 @@ class TableViewer {
                 this.frontOffset = offset;
                 let generation = ++this.queryGeneration;
                 this.rowSource.getRowsFrom(offset).then(rows => {
-                    this._supplyRows(generation, rows);
+                    this._supplyRows(generation, rows, {seek: offset});
                 });
                 console.log("Seek not implemented: ", res);
             });
@@ -435,7 +435,7 @@ class TableViewer {
         }
     }
 
-    _supplyRows(generation, res) {
+    _supplyRows(generation, res, opts) {
         let {rows, isEnd} = res;
         if (!this.waitingBelow) {
             console.log("_supplyRows while not waitingBelow");
@@ -456,7 +456,7 @@ class TableViewer {
         for (let row of rows) {
             this.rows.push(row);
         }
-        this.setDOMRows(0);
+        this.setDOMRows(0, !opts ? undefined : {seek: opts.seek});
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
@@ -879,7 +879,7 @@ class TableViewer {
         return changed;
     }
 
-    setDOMRows(scrollDistance) {
+    setDOMRows(scrollDistance, opts) {
         console.log("setDOMRows");
 
         // TODO: We can just pass in unseen rows.
@@ -1017,7 +1017,16 @@ class TableViewer {
 
 
         let finalAdjustment;
-        if (observedRowOffset !== null) {
+        if (opts && opts.seek !== undefined) {
+            // On the first rerender after seeking, put the seeked-to element at the top.
+            const ix = opts.seek - this.frontOffset;
+            if (ix < this.rowHolder.children.length) {
+                const elt = this.rowHolder.children[ix];
+                finalAdjustment = elt.getBoundingClientRect().top - this.columnHeaders.getBoundingClientRect().bottom;
+            } else {
+                finalAdjustment = 0;
+            }
+        } else if (observedRowOffset !== null) {
             const elt = this.rowHolder.children[observedRowOffset - this.frontOffset];
             finalAdjustment = elt.getBoundingClientRect().top - observedPosition;
         } else if (this.rowHolder.children.length > 0 && !this.displayedInfo.initialRender) {
