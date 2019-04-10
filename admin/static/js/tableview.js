@@ -389,7 +389,7 @@ class TableViewer {
                 this.frontOffset = offset;
                 let generation = ++this.queryGeneration;
                 this.rowSource.getRowsFrom(offset).then(rows => {
-                    this._supplyRows(generation, rows, {seek: offset});
+                    this._supplyRows(generation, rows, {seek: offset, seekCount: count});
                 });
                 console.log("Seek not implemented: ", res);
             });
@@ -456,7 +456,7 @@ class TableViewer {
         for (let row of rows) {
             this.rows.push(row);
         }
-        this.setDOMRows(0, !opts ? undefined : {seek: opts.seek});
+        this.setDOMRows(0, !opts ? undefined : {seek: opts.seek, seekCount: opts.seekCount});
         this.underflow = isEnd;
         console.log("this.underflow = ", this.underflow);
         // We might need to load more rows.
@@ -1017,12 +1017,25 @@ class TableViewer {
 
 
         let finalAdjustment;
-        if (opts && opts.seek !== undefined) {
+        if (opts) {
             // On the first rerender after seeking, put the seeked-to element at the top.
             const ix = opts.seek - this.frontOffset;
             if (ix < this.rowHolder.children.length) {
                 const elt = this.rowHolder.children[ix];
                 finalAdjustment = elt.getBoundingClientRect().top - this.columnHeaders.getBoundingClientRect().bottom;
+
+                // Also, highlight the elements.
+                // TODO: Unhighlight previously highlighted elements.
+                // (This is no good -- we want the elements to stay highlighted even after removed
+                // and reloaded -- the display state needs seeked state.)
+                for (let i = 0; i < opts.seekCount; i++) {
+                    let j = opts.seek + i - this.frontOffset;
+                    if (j >= this.rowHolder.children.length) {
+                        break;
+                    }
+                    this.rowHolder.children[j].className += ' seeked';
+                }
+
             } else {
                 finalAdjustment = 0;
             }
