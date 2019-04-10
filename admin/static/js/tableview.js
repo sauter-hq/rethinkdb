@@ -1021,8 +1021,20 @@ class TableViewer {
             // On the first rerender after seeking, put the seeked-to element at the top.
             const ix = opts.seek - this.frontOffset;
             if (ix < this.rowHolder.children.length) {
+                const breathingRoom = 5;
+                if (this.displayedInfo.rowHolderTop < breathingRoom) {
+                    this.displayedInfo.rowHolderTop = breathingRoom;
+                    this.rowHolder.style.top = breathingRoom + 'px';
+                }
+
                 const elt = this.rowHolder.children[ix];
                 finalAdjustment = elt.getBoundingClientRect().top - this.columnHeaders.getBoundingClientRect().bottom;
+                console.log("Adjusting final adjustment with opts", opts, "and adj", finalAdjustment);
+                if (opts.seek !== 0) {
+                    // Show the previous row a bit, so the user knows they're at the upper bound of
+                    // the matching rows via the highlighting.
+                    finalAdjustment -= breathingRoom;
+                }
 
                 // Also, highlight the elements.
                 // TODO: Unhighlight previously highlighted elements.
