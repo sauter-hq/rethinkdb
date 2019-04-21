@@ -46,6 +46,30 @@ class Driver
     close: (conn) ->
         conn.close noreplyWait: false
 
+    # TODO: Dedup logic between this and run_once.
+    # Run a query and just pass on the result
+    run_raw: (query, callback) =>
+        @connect (error, connection) =>
+            if error?
+                # If we cannot open a connection, we blackout the whole interface
+                # And do not call the callback
+                if is_disconnected?
+                    if @state is 'ok'
+                        is_disconnected.display_fail()
+                else
+                    is_disconnected = new require('body').IsDisconnected
+                @state = 'fail'
+            else
+                if @state is 'fail'
+                    # Force refresh
+                    window.location.reload true
+                else
+                    @state = 'ok'
+                    query.private_run connection, (err, result) =>
+                        if result?.value? and result?.profile?
+                            result = result.value
+                        callback(err, result)
+
     # Run a query once
     run_once: (query, callback) =>
         @connect (error, connection) =>
