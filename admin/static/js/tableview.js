@@ -46,7 +46,7 @@ class WindowRowSource {
             console.log("!this.lowLoader.hitEnd is an impossible case, currently");
         }
 
-        if (high > this.backOffset()) {
+        if (high > this.backOffset() || scrollHigh) {
             this.loadHigh();
         }
     }
@@ -322,16 +322,16 @@ class RealTableSpec {
         this.tableId = tableId;
     }
 
-    primaryRowSource() {
-        return new TableRowSource(this.r, this.driver, this.tableId, {
+    primaryRowSource(updateCb) {
+        return this.columnRowSource({
             colPath: ['id'],  // TODO: Hard-coded
             desc: false,
-        });
+        }, updateCb);
     }
 
     // {colPath: [string], desc: bool}
-    columnRowSource(orderSpec) {
-        return new TableRowSource(this.r, this.driver, this.tableId, orderSpec);
+    columnRowSource(orderSpec, updateCb) {
+        return new WindowRowSource(this.r, this.driver, this.tableId, orderSpec, updateCb);
     }
 }
 
@@ -342,18 +342,14 @@ class TableViewer {
         console.log("Constructing TableViewer with el ", el);
         this.el = el;
         this.tableSpec = tableSpec;
-        this.rowSource = tableSpec.primaryRowSource();
-        // Set to true when the end of the data is reached and present in the DOM.
-        this.underflow = false;
-        this.frontOffset = 0;
-        // This may duplicate a subregion of an array in the data source -- and parallels elements
-        // in this.rowHolder, but the row objects are immutable shared.
-        this.rows = [];
-        // TODO: Simplify the data storage?
-        this.waitingBelow = false;
-        this.waitingAbove = false;
+        const queryGeneration = 1;
+        this.rowSource = tableSpec.primaryRowSource(() => this.onUpdate(queryGeneration));
 
-        this.queryGeneration = 0;
+        // These define the slice of rowSource.rows that we _want_ to render.
+        this.frontOffset = 0;
+        this.backOffset = 0;
+
+        this.queryGeneration = queryGeneration;
         this.renderedGeneration = 0;
         this.numRedraws = 0;
 
@@ -428,21 +424,10 @@ class TableViewer {
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
 
-        if (this.rowHolder.children.length == 0) {
-            if (!this.underflow) {
-                console.log("rows from start");
-                let generation = ++this.queryGeneration;
-                console.log("rowSource:", this.rowSource);
-                this.waitingBelow = true;
-                this.rowSource.getRowsFromStart().then((res) => this._supplyRows(generation, res));
-            }
-            return;
-        }
-
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = !this.waitingAbove && this.frontOffset > 0 && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
-        let loadSubsequent = !this.waitingBelow &&
+        let loadPreceding = !this.rowSource.lowLoader.hitEnd && this.frontOffset > 0 && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
+        let loadSubsequent = !this.rowSource.highLoader.hitEnd &&
             rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
 
         console.log("this.rowHolder", this.rowHolder);
@@ -451,39 +436,24 @@ class TableViewer {
         let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
 
         if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
-
             console.log("Deleting rows >= index", middleIndex);
             let toDelete = this.rowHolder.children.length - middleIndex;
-            this.rows.splice(this.rows.length - toDelete, toDelete);
+
+            this.backOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
             this.setDOMRows(0);
-            this.underflow = false;
         } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
             let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
             console.log("Deleting rows < index", middleIndex);
-            let toDelete = middleIndex;
-            this.rows.splice(0, toDelete);
-            this.frontOffset += toDelete;
+            this.frontOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
             this.setDOMRows(scrollDistance);
-            console.log("incred frontOffset by ", toDelete, "to", this.frontOffset);
+            console.log("incred frontOffset to", this.frontOffset);
         }
 
-        // TODO: Well, we don't really use generation, do we.
-        let generation = this.queryGeneration;
-        if (loadPreceding) {
-            console.log("loadPreceding");
-            this.waitingAbove = true;
-            let rowsBefore = this.rowSource.getRowsBefore(this.frontOffset).then(
-                rows => this._supplyRowsBefore(generation, rows));
-        }
-        if (loadSubsequent) {
-            // TODO: We need some kind of loading bar when we get to the bottom.
-            console.log("loadSubsequent, length ", this.rowHolder.children.length, "frontOffset", this.frontOffset);
-            this.waitingBelow = true;
-            // TODO: Grotesque rowHolder.children.length
-            let rowsAfter = this.rowSource.getRowsFrom(this.frontOffset + this.rowHolder.children.length).then(
-                res => this._supplyRows(generation, res));
-        }
+        // TODO: Maybe generation makes sense here?  Or just in onUpdate.
+        this.reframe(this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
     }
+
+
 
     static createSeekNode() {
         let div = document.createElement('div');
@@ -543,61 +513,18 @@ class TableViewer {
         }
     }
 
-    _supplyRowsBefore(generation, rows) {
-        if (!this.waitingAbove) {
-            console.log("_supplyRowsBefore while not waitingAbove");
+    onUpdate(generation) {
+        if (generation !== this.queryGeneration) {
             return;
         }
-        if (generation < this.renderedGeneration) {
-            console.log("Ancient request from previous generation ignored");
-            return;
-        }
-        this.waitingAbove = false;
-        console.log("Supplying rows before", rows);
-        if (generation > this.renderedGeneration) {
-            console.log("wiping");
-            // TODO: Think this generation stuff through.  Probably have generationed waitingAbove/Below.
-            this.rows = [];
-        }
-        this.renderedGeneration = generation;
-        this.rows = rows.concat(this.rows);
-        this.frontOffset -= rows.length;
-        this.setDOMRows(0);
-        console.log("decred frontOffset by ", rows.length, "to", this.frontOffset);
-        // We might need to load more rows.
-        if (rows.length > 0) {
-            setTimeout(() => this.fetchForUpdate());
-        }
-    }
 
-    _supplyRows(generation, res, opts) {
-        let {rows, isEnd} = res;
-        if (!this.waitingBelow) {
-            console.log("_supplyRows while not waitingBelow");
-            return;
-        }
-        if (generation < this.renderedGeneration) {
-            console.log("Ancient request from previous generation ignored");
-            return;
-        }
-        this.waitingBelow = false;
-        console.log("Supplying rows", rows);
         if (generation > this.renderedGeneration) {
-            console.log("wiping ii");
-            this.rows = [];
+            // TODO: Wipe, somehow.
         }
-        this.renderedGeneration = generation;
-        // TODO: We falsely assume append-only.
-        for (let row of rows) {
-            this.rows.push(row);
-        }
-        this.setDOMRows(0, !opts ? undefined : {seek: opts.seek, seekCount: opts.seekCount});
-        this.underflow = isEnd;
-        console.log("this.underflow = ", this.underflow);
+
+        this.setDOMRows(0);
         // We might need to load more rows.
-        if (rows.length > 0) {
-            setTimeout(() => this.fetchForUpdate());
-        }
+        this.fetchForUpdate();
     }
 
     static isPlainObject(value) {
@@ -702,14 +629,15 @@ class TableViewer {
                     this.rowHolder.removeChild(this.rowHolder.firstChild);
                 }
                 this.frontOffset = 0;
+                this.backOffset = 0;
                 this.rows = [];
-                this.underflow = false;
                 // TODO: We might have pending supplyRows actions -- we need to use generation
                 // number to ignore them.
-                this.waitingBelow = false;
-                this.waitingAbove = false;
+                const generation = ++this.queryGeneration;
                 this.rowHolder.style.top = '0';
-                this.rowSource = this.tableSpec.columnRowSource(this.displayedInfo.orderSpec);
+                this.rowSource = this.tableSpec.columnRowSource(
+                    this.displayedInfo.orderSpec,
+                    () => this.onUpdate(generation));
                 this.rowScroller.scrollTo(this.rowScroller.scrollLeft, 0);
                 this.fetchForUpdate();
             };
