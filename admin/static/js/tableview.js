@@ -11,6 +11,130 @@
 // responsibility is to load data, and apply sortings.
 
 
+
+class WindowRowSource {
+    constructor(r, driver, tableId, orderSpec, updateCb) {
+        this.r = r;
+        this.driver = driver;
+        this.tableId = tableId;
+        this.orderSpec = orderSpec;
+        this.updateCb = updateCb;
+
+        this.offset = 0;
+        this.rows = [];
+
+        this.lowLoader = {hitEnd: true, pending: false};
+        this.highLoader = {hitEnd: false, pending: false,
+            cursor: null, key: r.minval, asc: true, keyBound: 'open'};
+
+        this.requestedFrame = null;
+
+        this.primaryKey = 'id';  // TODO
+    }
+
+    backOffset() { return this.offset + this.rows.length; }
+    rowsAndOffset() { return {offset: this.offset, rows: this.rows}; }
+    isPrimary(colPath) { return colPath.length === 1 && colPath[0] === this.primaryKey; }
+
+    // Says we require the data from rownums [low, high) to be available.
+    // scrollLow and scrollHigh are bools saying whether we want more data (preload)
+    // past that point.
+    reframe(low, scrollLow, high, scrollHigh) {
+        const queryLimit = 300;  // TODO
+        this.requestedFrame = {low, scrollLow, high, scrollHigh};
+        if (low < this.offset && !this.lowLoader.pending && !this.lowLoader.hitEnd) {
+            console.log("!this.lowLoader.hitEnd is an impossible case, currently");
+        }
+
+        if (high > this.backOffset()) {
+            this.loadHigh();
+        }
+    }
+
+    loadHigh() {
+        const r = this.r;
+        const backOffset = this.backOffset();
+        let loader = this.highLoader;
+        if (loader.pending || loader.hitEnd) {
+            return;
+        }
+        if (loader.cursor !== null) {
+            loader.pending = true;
+            loader.cursor.next((err, row) => {
+                loader.pending = false;
+                if (err) {
+                    // TODO: Seriously, we denote EOF with a string check?
+                    if (err.name === "ReqlDriverError" && err.message === "No more rows in the cursor.") {
+                        loader.hitEnd = true;
+                        loader.cursor = null;
+                        return;
+                    }
+                    // TODO: Put error status into state.
+                    console.log("loadHigh cursor next failed");
+                    return;
+                }
+                if (this.backOffset() !== backOffset) {
+                    console.log("backOffset() got moved while load pending, in cursor next");
+                    return;
+                }
+                this.rows.push(row);
+                // TODO: Ensure that updateCb demands more data.
+                setTimeout(this.updateCb, 0);
+            });
+            return;
+        }
+
+
+        loader.pending = true;
+        const bound = loader.keyBound;
+        const boundaryKey = loader.key;
+
+        const orderingKey = this.orderSpec.colPath;
+        // TODO: Use queryLimit for batch size param.
+        const queryLimit = 300;
+        let q;
+        if (this.isPrimary(orderingKey)) {
+            q = this.query((table, tableConfig) =>
+                table.between(boundaryKey, r.maxval, {leftBound: loader.keyBound})
+                    .orderBy({index: (this.orderSpec.desc ? r.desc : r.asc)(this.primaryKey)}));
+        } else {
+            q = this.query((table, tableConfig) =>
+                table.filter(x => TableRowSource.unfurl(x, orderingKey)[loader.asc ? 'gt' : 'lt'](loader.key))
+                    .orderBy((loader.asc ? r.asc : r.desc)(x => TableRowSource.unfurl(x, orderingKey))));
+        }
+
+        this.driver.run_raw(q, (err, results) => {
+            loader.pending = false;
+            if (err) {
+                // For now there is no state update to loader.
+                console.log("run_raw err:", err);
+                // TODO: Record state and report back to UI.
+                return;
+            }
+            if (this.backOffset() !== backOffset) {
+                console.log("backOffset() got moved while load pending");
+                return;
+            }
+            // results is a cursor.
+            loader.cursor = results;
+
+            // Just invoke on cursor-having state.
+            loadHigh();
+        });
+    }
+
+    // Takes a ((reql_table, table_config) -> reql_query) function and returns a reql query.
+    query(queryFunc) {
+        let r = this.r;
+        // TODO: Why is system_db used elsewhere?
+        return r.db('rethinkdb').table('table_config').get(this.tableId).do(table_config =>
+            queryFunc(r.db(table_config('db')).table(table_config('name')), table_config)
+        );
+    }
+
+}
+
+
 class TableRowSource {
     constructor(r, driver, tableId, orderSpec) {
         this.r  = r;
