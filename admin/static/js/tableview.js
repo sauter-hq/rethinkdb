@@ -99,8 +99,8 @@ class WindowRowSource {
                     .orderBy({index: (this.orderSpec.desc ? r.desc : r.asc)(this.primaryKey)}));
         } else {
             q = this.query((table, tableConfig) =>
-                table.filter(x => TableRowSource.unfurl(x, orderingKey)[loader.asc ? 'gt' : 'lt'](loader.key))
-                    .orderBy((loader.asc ? r.asc : r.desc)(x => TableRowSource.unfurl(x, orderingKey))));
+                table.filter(x => WindowRowSource.unfurl(x, orderingKey)[loader.asc ? 'gt' : 'lt'](loader.key))
+                    .orderBy((loader.asc ? r.asc : r.desc)(x => WindowRowSource.unfurl(x, orderingKey))));
         }
 
         this.driver.run_raw(q, (err, results) => {
@@ -132,6 +132,20 @@ class WindowRowSource {
         );
     }
 
+    static unfurl(row, path) {
+        let q = row;
+        for (let key of path) {
+            q = q(key);
+        }
+        return q.default(null);
+    }
+
+    static access(obj, path) {
+        for (let key of path) {
+            obj = obj && obj[key];
+        }
+        return obj;
+    }
 }
 
 
