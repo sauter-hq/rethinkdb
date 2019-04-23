@@ -121,7 +121,7 @@ class WindowRowSource {
             loader.cursor = results;
 
             // Just invoke on cursor-having state.
-            loadHigh();
+            this.loadHigh();
         });
     }
 
@@ -420,21 +420,27 @@ class TableViewer {
             highlightCount: 0,
         };
 
+        console.log("Constructed with ", this.rowScroller, " and holder ", this.rowHolder);
     }
 
     fetchForUpdate() {
         // TODO: Use const where appropriate.
         const preload_ratio = 3;  // TODO: What number?  Adapt to latency?
         const overscroll_ratio = 4;
+        const firstRun = this.numRedraws === 0;
         console.log("TableViewer redraw", ++this.numRedraws);
         // Our job is to look at what has been rendered, what needs to be
         // rendered, and query for more information.
 
         let scrollerBoundingRect = this.rowScroller.getBoundingClientRect();
         let rowsBoundingRect = this.rowHolder.getBoundingClientRect();
-        let loadPreceding = !this.rowSource.lowLoader.hitEnd && this.frontOffset > 0 && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
+        let loadPreceding = !this.rowSource.lowLoader.hitEnd && rowsBoundingRect.top > scrollerBoundingRect.top - scrollerBoundingRect.height * preload_ratio;
         let loadSubsequent = !this.rowSource.highLoader.hitEnd &&
-            rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
+            rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio;
+        console.log("high hitEnd", this.rowSource.highLoader.hitEnd, rowsBoundingRect, scrollerBoundingRect);
+        // When we first set up the element, they have not been rendered, and the bounding rects are 0,
+        // which means we need to specifically kick forward the rendering.
+        loadSubsequent = loadSubsequent || firstRun;
 
         if (this.rowHolder.children.length > 0) {
             console.log("this.rowHolder", this.rowHolder);
@@ -457,6 +463,7 @@ class TableViewer {
             }
         }
 
+        console.log("Calling reframe ", this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
         // TODO: Maybe generation makes sense here?  Or just in onUpdate.
         this.rowSource.reframe(this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
     }
@@ -510,7 +517,8 @@ class TableViewer {
     }
 
     appendedSource() {
-        this.underflow = false;
+        // TODO: What is this function?
+        // this.under flow = false;
         // this.fetchForUpdate();
     }
 
