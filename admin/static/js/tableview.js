@@ -32,6 +32,8 @@ class WindowRowSource {
         this.primaryKey = 'id';  // TODO
     }
 
+    // Other data sources (e.g. arbitrary queries) might return null.
+    primaryKeyOrNull() { return this.primaryKey; }
     backOffset() { return this.offset + this.rows.length; }
     rowsAndOffset() { return {offset: this.offset, rows: this.rows}; }
     isPrimary(colPath) { return colPath.length === 1 && colPath[0] === this.primaryKey; }
@@ -130,6 +132,10 @@ class WindowRowSource {
         return r.db('rethinkdb').table('table_config').get(this.tableId).do(table_config =>
             queryFunc(r.db(table_config('db')).table(table_config('name')), table_config)
         );
+    }
+
+    cancelPendingRequests() {
+        // TODO: Make sure this is implemented.
     }
 
     static unfurl(row, path) {
@@ -345,7 +351,7 @@ class TableViewer {
         const queryGeneration = 1;
         this.rowSource = tableSpec.primaryRowSource(() => this.onUpdate(queryGeneration));
 
-        // These define the slice of rowSource.rows that we _want_ to render.
+        // These define the slice of rowSource.rows(AndOffset) that we _want_ to render.
         this.frontOffset = 0;
         this.backOffset = 0;
 
@@ -430,27 +436,29 @@ class TableViewer {
         let loadSubsequent = !this.rowSource.highLoader.hitEnd &&
             rowsBoundingRect.bottom < scrollerBoundingRect.bottom + scrollerBoundingRect.height * preload_ratio && !this.underflow;
 
-        console.log("this.rowHolder", this.rowHolder);
-        let middleIndex = Math.floor(this.rowHolder.children.length / 2);
-        console.log("middleIndex", middleIndex);
-        let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
+        if (this.rowHolder.children.length > 0) {
+            console.log("this.rowHolder", this.rowHolder);
+            let middleIndex = Math.floor(this.rowHolder.children.length / 2);
+            console.log("middleIndex", middleIndex);
+            let middleBoundingRect = this.rowHolder.children[middleIndex].getBoundingClientRect();
 
-        if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
-            console.log("Deleting rows >= index", middleIndex);
-            let toDelete = this.rowHolder.children.length - middleIndex;
+            if (!loadSubsequent && middleBoundingRect.top > scrollerBoundingRect.bottom + scrollerBoundingRect.height * overscroll_ratio) {
+                console.log("Deleting rows >= index", middleIndex);
+                let toDelete = this.rowHolder.children.length - middleIndex;
 
-            this.backOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
-            this.setDOMRows(0);
-        } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
-            let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
-            console.log("Deleting rows < index", middleIndex);
-            this.frontOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
-            this.setDOMRows(scrollDistance);
-            console.log("incred frontOffset to", this.frontOffset);
+                this.backOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
+                this.setDOMRows(0);
+            } else if (!loadPreceding && middleBoundingRect.bottom < scrollerBoundingRect.top - scrollerBoundingRect.height * overscroll_ratio) {
+                let scrollDistance = middleBoundingRect.top - rowsBoundingRect.top;
+                console.log("Deleting rows < index", middleIndex);
+                this.frontOffset = this.displayedInfo.displayedFrontOffset + middleIndex;
+                this.setDOMRows(scrollDistance);
+                console.log("incred frontOffset to", this.frontOffset);
+            }
         }
 
         // TODO: Maybe generation makes sense here?  Or just in onUpdate.
-        this.reframe(this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
+        this.rowSource.reframe(this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
     }
 
 
@@ -948,25 +956,27 @@ class TableViewer {
     setDOMRows(scrollDistance, opts) {
         console.log("setDOMRows");
 
-        // TODO: We can just pass in unseen rows.
-        TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, this.rows);
+        const {rows, offset} = this.rowSource.rowsAndOffset();
+        // TODO: We don't want to reprocess already-seen rows (for efficiency).
+        TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, rows);
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
 
         const attrsChanged = this.applyNewAttrs(attrs);
 
-
         const dfo = this.displayedInfo.displayedFrontOffset;
         const origLength = this.rowHolder.children.length;
-        const backOffset = this.frontOffset + this.rows.length;
+        const backOffset = this.backOffset + 30;  // TODO: Oh?  TODO: Remove "+ 30" hack.
         const origBackOffset = dfo + origLength;
 
+        const realOffset = Math.max(this.frontOffset, offset);
+        const realBackOffset = Math.max(realOffset, Math.min(backOffset, offset + rows.length));
 
         // Find an existing row that is displayed and will continue to be displayed.
         let observedRowOffset = null;
         let observedPosition = null;
         {
-            const commonFO = Math.max(this.frontOffset, dfo);
-            const commonBO = Math.min(backOffset, origBackOffset);
+            const commonFO = Math.max(realOffset, dfo);
+            const commonBO = Math.min(realBackOffset, origBackOffset);
             if (commonFO < commonBO) {
                 observedRowOffset = commonFO;
                 let tr = this.rowHolder.children[observedRowOffset - dfo];
@@ -980,8 +990,12 @@ class TableViewer {
         let hasInsertionElement = false;
 
         if (attrsChanged || opts) {
+            let sliceRows = rows.slice(
+                realOffset - offset,
+                realBackOffset - offset);
+
             // Just reconstruct all rows.
-            let trs = TableViewer.json_to_table_get_values(this.rows, this.frontOffset, attrs,
+            let trs = TableViewer.json_to_table_get_values(sliceRows, realOffset, attrs,
                 this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
 
             while (this.rowHolder.firstChild) {
@@ -991,12 +1005,16 @@ class TableViewer {
                 this.rowHolder.appendChild(tr);
             }
         } else {
+            // TODO: Double-slicing.
+            let sliceRows = rows.slice(
+                realOffset - offset,
+                realBackOffset - offset);
 
             // Columns are the same, see if we can incrementally update rows.
-            if (this.frontOffset < dfo) {
+            if (realOffset < dfo) {
                 // We have rows in front to add.
-                let trs = TableViewer.json_to_table_get_values(this.rows.slice(0, dfo - this.frontOffset),
-                    this.frontOffset, attrs,
+                let trs = TableViewer.json_to_table_get_values(sliceRows.slice(0, dfo - realOffset),
+                    realOffset, attrs,
                     this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
                 let insertionPoint = this.rowHolder.firstChild;
                 for (let tr of trs) {
@@ -1008,7 +1026,7 @@ class TableViewer {
                 console.log("Front-inserted ", trs.length, "rows");
             } else {
                 // We have >= 0 rows in front to delete.
-                let toDelete = Math.min(this.frontOffset - dfo, origLength);
+                let toDelete = Math.min(realOffset - dfo, origLength);
                 for (let i = 0; i < toDelete; i++) {
                     this.rowHolder.removeChild(this.rowHolder.firstChild);
                 }
@@ -1025,14 +1043,14 @@ class TableViewer {
             } else {
                 // We have rows on the end to add.
                 let toAdd = backOffset - origBackOffset;
-                let trs = TableViewer.json_to_table_get_values(this.rows.slice(-toAdd), backOffset - toAdd, attrs,
+                let trs = TableViewer.json_to_table_get_values(sliceRows.slice(-toAdd), backOffset - toAdd, attrs,
                     this.displayedInfo.highlightStart, this.displayedInfo.highlightCount);
                 for (let tr of trs) {
                     this.rowHolder.appendChild(tr);
                 }
             }
         }
-        this.displayedInfo.displayedFrontOffset = this.frontOffset;
+        this.displayedInfo.displayedFrontOffset = realOffset;
 
         if (this.rowHolder.firstChild) {
             let tr = this.rowHolder.firstChild;
@@ -1075,7 +1093,9 @@ class TableViewer {
         if (topAdjustment !== 0) {
             let top = this.displayedInfo.rowHolderTop;
             top += topAdjustment;
-            if (top < 0 || this.frontOffset === 0) {
+            // TODO: This logic is broken in the face of seeking, when
+            // realOffset (or this.frontOffset, or offset) could go negative.
+            if (top < 0 || realOffset === 0) {
                 // Possible if the data or row heights changes.
                 console.log("Top clamped:", top);
                 top = 0;
@@ -1088,7 +1108,7 @@ class TableViewer {
         let finalAdjustment;
         if (opts) {
             // On the first rerender after seeking, put the seeked-to element at the top.
-            const ix = opts.seek - this.frontOffset;
+            const ix = opts.seek - realOffset;
             if (ix < this.rowHolder.children.length) {
                 const breathingRoom = 5;
                 if (this.displayedInfo.rowHolderTop < breathingRoom) {
@@ -1109,7 +1129,7 @@ class TableViewer {
                 finalAdjustment = 0;
             }
         } else if (observedRowOffset !== null) {
-            const elt = this.rowHolder.children[observedRowOffset - this.frontOffset];
+            const elt = this.rowHolder.children[observedRowOffset - realOffset];
             finalAdjustment = elt.getBoundingClientRect().top - observedPosition;
         } else if (this.rowHolder.children.length > 0 && !this.displayedInfo.initialRender) {
             // TODO: Ensure empty children case is handled appropriately.
@@ -1121,7 +1141,7 @@ class TableViewer {
         this.displayedInfo.initialRender = false;
     }
 
-
+    // TODO: What?
     // TODO: Remove.
     static makeDOMRow(row) {
         let rowEl = document.createElement("p");
