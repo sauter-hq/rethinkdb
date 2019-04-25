@@ -54,6 +54,31 @@ class WindowRowSource {
         }
     }
 
+    static readCursor(cursor, count, cb) {
+        let rows = [];
+        let reader;
+        reader = () => {
+            if (rows.length === count) {
+                setTimeout(cb, 0, null, rows);
+                return;
+            }
+            cursor.next((err, row) => {
+                if (err) {
+                    // TODO: Seriously, we denote EOF with a string check?
+                    if (err.name === "ReqlDriverError" && err.message === "No more rows in the cursor.") {
+                        setTimeout(cb, 0, null, rows);
+                        return;
+                    }
+                    setTimeout(cb, 0, err, rows);
+                    return;
+                }
+                rows.push(row);
+                reader();
+            });
+        };
+        reader();
+    }
+
     loadHigh() {
         const r = this.r;
         const backOffset = this.backOffset();
@@ -63,26 +88,23 @@ class WindowRowSource {
         }
         if (loader.cursor !== null) {
             loader.pending = true;
-            loader.cursor.next((err, row) => {
+            // TODO: "30"
+            WindowRowSource.readCursor(loader.cursor, 30, (err, rows) => {
                 loader.pending = false;
-                if (err) {
-                    // TODO: Seriously, we denote EOF with a string check?
-                    if (err.name === "ReqlDriverError" && err.message === "No more rows in the cursor.") {
-                        loader.hitEnd = true;
-                        loader.cursor = null;
-                        return;
-                    }
-                    // TODO: Put error status into state.
-                    console.log("loadHigh cursor next failed");
-                    return;
-                }
                 if (this.backOffset() !== backOffset) {
-                    console.log("backOffset() got moved while load pending, in cursor next");
+                    console.error("backOffset() got moved while load pending, in cursor next");
                     return;
                 }
-                console.log("cursor next returned row", row);
-                this.rows.push(row);
-                // TODO: Ensure that updateCb demands more data.
+                console.log("Received rows", rows);
+                // rows is always an array, with rows we got before the error.
+                for (let row of rows) {
+                    this.rows.push(row);
+                }
+                if (err) {
+                    // TODO: Put error status into state, or pass to updateCb.
+                    console.error("loadHigh cursor next failed", err);
+                    return;
+                }
                 setTimeout(this.updateCb, 0);
             });
             return;
