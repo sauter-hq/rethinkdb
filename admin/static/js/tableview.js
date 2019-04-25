@@ -992,7 +992,7 @@ class TableViewer {
 
         const dfo = this.displayedInfo.displayedFrontOffset;
         const origLength = this.rowHolder.children.length;
-        const backOffset = this.backOffset + 30;  // TODO: Oh?  TODO: Remove "+ 30" hack.
+        const backOffset = this.backOffset ;
         const origBackOffset = dfo + origLength;
 
         const realOffset = Math.max(this.frontOffset, offset);
