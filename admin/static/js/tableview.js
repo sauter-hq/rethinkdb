@@ -49,6 +49,7 @@ class WindowRowSource {
         }
 
         if (high > this.backOffset() || scrollHigh) {
+            console.log("high" )
             this.loadHigh();
         }
     }
@@ -79,6 +80,7 @@ class WindowRowSource {
                     console.log("backOffset() got moved while load pending, in cursor next");
                     return;
                 }
+                console.log("cursor next returned row", row);
                 this.rows.push(row);
                 // TODO: Ensure that updateCb demands more data.
                 setTimeout(this.updateCb, 0);
@@ -109,12 +111,12 @@ class WindowRowSource {
             loader.pending = false;
             if (err) {
                 // For now there is no state update to loader.
-                console.log("run_raw err:", err);
+                console.error("run_raw err:", err);
                 // TODO: Record state and report back to UI.
                 return;
             }
             if (this.backOffset() !== backOffset) {
-                console.log("backOffset() got moved while load pending");
+                console.error("backOffset() got moved while load pending");
                 return;
             }
             // results is a cursor.
@@ -354,6 +356,8 @@ class TableViewer {
         // These define the slice of rowSource.rows(AndOffset) that we _want_ to render.
         this.frontOffset = 0;
         this.backOffset = 0;
+        this.wantFrontOffsetExpand = false;
+        this.wantBackOffsetExpand = false;
 
         this.queryGeneration = queryGeneration;
         this.renderedGeneration = 0;
@@ -463,6 +467,9 @@ class TableViewer {
             }
         }
 
+        this.wantFrontOffsetExpand = loadPreceding;
+        this.wantBackOffsetExpand = loadSubsequent;
+
         console.log("Calling reframe ", this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
         // TODO: Maybe generation makes sense here?  Or just in onUpdate.
         this.rowSource.reframe(this.frontOffset, loadPreceding, this.backOffset, loadSubsequent);
@@ -536,6 +543,17 @@ class TableViewer {
 
         if (generation > this.renderedGeneration) {
             // TODO: Wipe, somehow.
+        }
+
+        if (this.wantBackOffsetExpand) {
+            const {rows, offset} = this.rowSource.rowsAndOffset();
+            // TODO: "30"
+            this.backOffset = Math.min(this.backOffset + 30, offset + rows.length);
+        }
+        if (this.wantFrontOffsetExpand) {
+            const {rows, offset} = this.rowSource.rowsAndOffset();
+            // TODO: "30"
+            this.frontOffset = Math.max(this.frontOffset - 30, offset);
         }
 
         this.setDOMRows(0);
@@ -965,6 +983,7 @@ class TableViewer {
         console.log("setDOMRows");
 
         const {rows, offset} = this.rowSource.rowsAndOffset();
+        console.log("We see ", rows.length, "rows, offset is", offset);
         // TODO: We don't want to reprocess already-seen rows (for efficiency).
         TableViewer.updateColumnInfo(this.rowSource.primaryKeyOrNull(), this.columnInfo, rows);
         let attrs = TableViewer.emitColumnInfoAttrs(this.columnInfo);
