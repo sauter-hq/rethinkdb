@@ -167,7 +167,7 @@ ifeq ($(DEBUG),1)
 else # ifeq ($(DEBUG),1)
   # use -fno-strict-aliasing to not break things
   # march=native used to break the serializer
-  RT_CXXFLAGS += -O3 -DNDEBUG -fno-strict-aliasing # -march=native
+  RT_CXXFLAGS += -O0 -DNDEBUG -fno-strict-aliasing # -march=native
   ifeq ($(NO_OMIT_FRAME_POINTER),1)
     RT_CXXFLAGS += -fno-omit-frame-pointer
   endif
