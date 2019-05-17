@@ -90,7 +90,7 @@ RT_CXXFLAGS += -pthread
 RT_CXXFLAGS += "-DPRODUCT_NAME=\"$(PRODUCT_NAME)\""
 RT_CXXFLAGS += "-D__STDC_LIMIT_MACROS"
 RT_CXXFLAGS += "-D__STDC_FORMAT_MACROS"
-RT_CXXFLAGS += -Wall -Wextra
+RT_CXXFLAGS += -Wall -Wextra -Wno-noexcept -Wno-deprecated
 
 # Enable RapidJSON std::string functions
 RT_CXXFLAGS += "-DRAPIDJSON_HAS_STDSTRING"
@@ -167,7 +167,9 @@ ifeq ($(DEBUG),1)
 else # ifeq ($(DEBUG),1)
   # use -fno-strict-aliasing to not break things
   # march=native used to break the serializer
-	RT_CXXFLAGS += -Wno-noexcept -Wno-deprecated -O1 -DNDEBUG -falign-functions  -falign-jumps -falign-labels  -falign-loops -fno-strict-aliasing  -fdevirtualize  -fdevirtualize-speculatively -fexpensive-optimizations -finline-small-functions 
+	RT_CXXFLAGS += -O1 -DNDEBUG -falign-functions -falign-jumps -falign-labels \
+								 -falign-loops -fno-strict-aliasing -fdevirtualize -fdevirtualize-speculatively \
+								 -fexpensive-optimizations -finline-small-functions 
   ifeq ($(NO_OMIT_FRAME_POINTER),1)
     RT_CXXFLAGS += -fno-omit-frame-pointer
   endif
