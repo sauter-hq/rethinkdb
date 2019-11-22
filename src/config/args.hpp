@@ -76,7 +76,7 @@
 #define METABLOCK_SIZE                            (4 * KILOBYTE)
 
 // Size of each btree node (in bytes) on disk
-#define DEFAULT_BTREE_BLOCK_SIZE                  (4 * KILOBYTE)
+#define DEFAULT_BTREE_BLOCK_SIZE                  (32 * KILOBYTE)
 
 // Size of each extent (in bytes)
 // This should not be too small, or garbage collection will become
