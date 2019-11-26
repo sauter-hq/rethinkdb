@@ -1463,14 +1463,14 @@
               }
             },
             "graceful-fs": {
-              "version": "3.0.11",
-              "from": "graceful-fs@>=3.0.0 <4.0.0",
-              "resolved": "https://registry.npmjs.org/graceful-fs/-/graceful-fs-3.0.11.tgz",
+              "version": "4.2.3",
+              "from": "graceful-fs@>=3.0.0 <4.2.3",
+              "resolved": "https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.3.tgz",
               "dependencies": {
                 "natives": {
-                  "version": "1.1.0",
+                  "version": "1.1.3",
                   "from": "natives@>=1.1.0 <2.0.0",
-                  "resolved": "https://registry.npmjs.org/natives/-/natives-1.1.0.tgz"
+                  "resolved": "https://registry.npmjs.org/natives/-/natives-1.1.3.tgz"
                 }
               }
             },
