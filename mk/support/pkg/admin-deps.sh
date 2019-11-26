@@ -1,4 +1,5 @@
 full_npm_package=rethinkdb-webui
+npm_package=rethinkdb-webui
 version=2.0.3
 
 npm_conf=$(niceabspath "$conf_dir/npm.conf")
@@ -28,4 +29,8 @@ pkg_fetch () {
     rm -rf "$src_dir"
     mkdir -p "$src_dir"
     mv "$tmp_dir/"{node_modules,*.json} "$src_dir"
+}
+
+package_json () {
+  cat "$src_dir"/package.json
 }

@@ -56,7 +56,7 @@ js-install: $(JS_PKG_DIR) | $(NPM_BIN_DEP)
 .PHONY: js-dependencies
 js-dependencies: $(JS_PKG_DIR)/node_modules
 
-BLUEBIRD_MODULE_DIR := $(SUPPORT_BUILD_DIR)/bluebird_$(bluebird_VERSION)/node_modules/packed-bluebird/node_modules/bluebird
+BLUEBIRD_MODULE_DIR := $(SUPPORT_BUILD_DIR)/bluebird_$(bluebird_VERSION)/node_modules/bluebird
 
 $(BLUEBIRD_MODULE_DIR): $(SUPPORT_BUILD_DIR)/bluebird_$(bluebird_VERSION)/install.witness
 	touch $@
