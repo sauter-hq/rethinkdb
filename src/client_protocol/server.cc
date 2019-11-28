@@ -174,15 +174,16 @@ void http_conn_cache_t::on_ring() {
 }
 
 size_t http_conn_cache_t::sha_hasher_t::operator()(const conn_key_t &x) const {
-    EVP_MD_CTX c;
-    EVP_DigestInit(&c, EVP_sha256());
-    EVP_DigestUpdate(&c, x.data(), x.size());
+    EVP_MD_CTX* c = EVP_MD_CTX_new();
+    EVP_DigestInit(c, EVP_sha256());
+    EVP_DigestUpdate(c, x.data(), x.size());
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int digest_size = 0;
-    EVP_DigestFinal(&c, digest, &digest_size);
+    EVP_DigestFinal(c, digest, &digest_size);
     rassert(digest_size >= sizeof(size_t));
     size_t res = 0;
     memcpy(&res, digest, std::min(sizeof(size_t), static_cast<size_t>(digest_size)));
+    EVP_MD_CTX_free(c);
     return res;
 }
 
